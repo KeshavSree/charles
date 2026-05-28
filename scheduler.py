@@ -37,6 +37,11 @@ async def run_all_scrapers(companies_path: str = "companies.yaml") -> None:
                     async with get_session() as session:
                         await upsert_jobs(session, postings)
                     logger.info("  -> %d jobs for %s/%s", len(postings), source, company)
+                except httpx.HTTPStatusError as e:
+                    if e.response.status_code == 404:
+                        logger.info("%s jobs not found on %s", company.title(), source.title())
+                    else:
+                        logger.warning("HTTP %d scraping %s/%s", e.response.status_code, source, company)
                 except Exception:
                     logger.exception("Error scraping %s/%s", source, company)
 

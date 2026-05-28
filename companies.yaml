@@ -1,9 +1,9 @@
 greenhouse:
   - stripe
   - notion
-lever:
-  - vercel
-  - linear
+#lever:
+#  - vercel
+#  - linear
 ashby:
   - anthropic
   - cohere
