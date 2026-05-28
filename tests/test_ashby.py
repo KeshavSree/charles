@@ -8,22 +8,22 @@ from scrapers.ashby import AshbyScraper
 from scrapers.registry import SCRAPER_REGISTRY
 
 SAMPLE_RESPONSE = {
-    "jobPostings": [
+    "jobs": [
         {
             "id": "uuid-anthropic-001",
             "title": "Research Engineer",
-            "locationName": "San Francisco, CA",
+            "location": "San Francisco, CA",
             "descriptionHtml": "<p>Join our research team.</p>",
             "publishedAt": "2024-01-15T10:00:00Z",
-            "applicationLink": "https://jobs.ashbyhq.com/anthropic/uuid-anthropic-001",
+            "jobUrl": "https://jobs.ashbyhq.com/anthropic/uuid-anthropic-001",
         },
         {
             "id": "uuid-anthropic-002",
             "title": "Policy Researcher",
-            "locationName": "Remote",
+            "location": "Remote",
             "descriptionHtml": "<p>Work on AI policy.</p>",
             "publishedAt": "2024-02-01T09:30:00Z",
-            "applicationLink": "https://jobs.ashbyhq.com/anthropic/uuid-anthropic-002",
+            "jobUrl": "https://jobs.ashbyhq.com/anthropic/uuid-anthropic-002",
         },
     ]
 }
@@ -53,7 +53,7 @@ async def test_ashby_scrape_returns_job_postings(httpx_mock: HTTPXMock):
 async def test_ashby_empty_response(httpx_mock: HTTPXMock):
     httpx_mock.add_response(
         url="https://api.ashbyhq.com/posting-api/job-board/cohere",
-        json={"jobPostings": []},
+        json={"jobs": []},
     )
     async with httpx.AsyncClient() as client:
         jobs = await AshbyScraper(client).scrape("cohere")

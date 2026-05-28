@@ -24,12 +24,12 @@ class AshbyScraper(BaseScraper):
                 source="ashby",
                 company=company,
                 title=posting["title"],
-                url=posting["applicationLink"],
-                location=posting.get("locationName"),
+                url=posting.get("jobUrl") or posting.get("applyUrl") or posting.get("applicationLink", ""),
+                location=posting.get("location") or posting.get("locationName"),
                 description=posting.get("descriptionHtml"),
                 posted_at=datetime.fromisoformat(
                     posting["publishedAt"].replace("Z", "+00:00")
                 ),
             )
-            for posting in data.get("jobPostings", [])
+            for posting in data.get("jobs", data.get("jobPostings", []))
         ]

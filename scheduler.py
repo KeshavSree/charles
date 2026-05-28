@@ -12,7 +12,7 @@ import scrapers.greenhouse  # noqa: F401 — triggers @register
 import scrapers.lever  # noqa: F401 — triggers @register
 from config import Settings
 from scrapers.registry import get_scraper
-from storage.db import get_session
+from storage.db import create_tables, get_session
 from storage.repository import upsert_jobs
 
 logger = logging.getLogger(__name__)
@@ -25,6 +25,7 @@ def _load_companies(path: str = "companies.yaml") -> dict[str, list[str]]:
 
 async def run_all_scrapers(companies_path: str = "companies.yaml") -> None:
     """Scrape all configured companies and persist results."""
+    await create_tables()
     companies = _load_companies(companies_path)
     async with httpx.AsyncClient(timeout=30.0) as client:
         for source, company_list in companies.items():
