@@ -43,6 +43,8 @@ async def upsert_jobs(session: AsyncSession, postings: list[JobPosting]) -> None
             "location": p.location,
             "description": p.description,
             "posted_at": p.posted_at,
+            "updated_at": p.updated_at,
+            "seniority": p.seniority,
             "scraped_at": now,
         }
         for p in postings
@@ -59,6 +61,8 @@ async def upsert_jobs(session: AsyncSession, postings: list[JobPosting]) -> None
                 "title": stmt.excluded.title,
                 "location": stmt.excluded.location,
                 "description": stmt.excluded.description,
+                "updated_at": stmt.excluded.updated_at,
+                "seniority": stmt.excluded.seniority,
                 "scraped_at": stmt.excluded.scraped_at,
             },
         )
@@ -71,6 +75,8 @@ async def upsert_jobs(session: AsyncSession, postings: list[JobPosting]) -> None
                 "title": stmt.excluded.title,
                 "location": stmt.excluded.location,
                 "description": stmt.excluded.description,
+                "updated_at": stmt.excluded.updated_at,
+                "seniority": stmt.excluded.seniority,
                 "scraped_at": stmt.excluded.scraped_at,
             },
         )

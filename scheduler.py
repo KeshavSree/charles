@@ -11,6 +11,7 @@ import scrapers.ashby  # noqa: F401 — triggers @register
 import scrapers.greenhouse  # noqa: F401 — triggers @register
 import scrapers.lever  # noqa: F401 — triggers @register
 from config import Settings
+from filters import is_technical
 from scrapers.registry import get_scraper
 from storage.db import create_tables, get_session
 from storage.repository import upsert_jobs
@@ -34,6 +35,7 @@ async def run_all_scrapers(companies_path: str = "companies.yaml") -> None:
                     scraper = get_scraper(source, client)
                     logger.info("Scraping %s/%s ...", source, company)
                     postings = await scraper.scrape(company)
+                    postings = [p for p in postings if is_technical(p.title)]
                     async with get_session() as session:
                         await upsert_jobs(session, postings)
                     logger.info("  -> %d jobs for %s/%s", len(postings), source, company)

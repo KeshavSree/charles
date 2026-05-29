@@ -1,6 +1,8 @@
 # scrapers/greenhouse.py
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 from scrapers.base import BaseScraper, JobPosting
 from scrapers.registry import register
 
@@ -26,6 +28,9 @@ class GreenhouseScraper(BaseScraper):
                 location=job.get("location", {}).get("name"),
                 description=job.get("content"),
                 posted_at=None,
+                updated_at=datetime.fromisoformat(
+                    job["updated_at"].replace("Z", "+00:00")
+                ) if job.get("updated_at") else None,
             )
             for job in data.get("jobs", [])
         ]

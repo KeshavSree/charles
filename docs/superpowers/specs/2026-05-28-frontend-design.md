@@ -89,9 +89,9 @@ Added to `storage/models.py`:
 ```python
 class Resume(Base):
     __tablename__ = "resumes"
-    id:          str (UUID, PK)
-    filename:    str
-    file_path:   str
+    id:          str (UUID4, PK)
+    filename:    str              # original filename as uploaded
+    file_path:   str              # absolute path: <project_root>/uploads/<uuid>.pdf
     uploaded_at: datetime
 
 class ResumeSection(Base):

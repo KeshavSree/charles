@@ -1,9 +1,33 @@
 greenhouse:
+  # FAANG
+  - google
+  - Apple
+  - Amazon
+  - nvidia
+  - netflix
+  # FAANG-adjacent
+  - uber
+  - lyft
+  - airbnb
+  - dropbox
+  - pinterest
+  - snap
+  # Established tech
   - stripe
   - notion
-#lever:
-#  - vercel
-#  - linear
+  - atlassian
+  - hubspot
+  - zendesk
+  - cloudflare
+  - twilio
+  - crowdstrike
+  # Data / AI
+  - snowflake
+  - datadog
+  - elastic
+  - mongodb
+  - confluent
+
 ashby:
   - anthropic
   - cohere
