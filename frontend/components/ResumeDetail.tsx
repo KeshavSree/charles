@@ -17,128 +17,6 @@ interface Props {
   onTabChange: (tab: string) => void
 }
 
-const DATE_RE = /\b(19|20)\d{2}\b/
-const BULLET_RE = /^\s*[•\-\*–·◦▪▸►»]/
-
-function splitEntries(content: string): string[] {
-  // 1. Try blank-line split (works when PDF preserves spacing)
-  const blocks = content.split(/\n{2,}/).map((e) => e.trim()).filter(Boolean)
-  if (blocks.length > 1) return blocks
-
-  // 2. Date-boundary split: find lines with a year; walk backward past bullets
-  //    to the first non-bullet line — that's the entry start.
-  const lines = content.split('\n')
-  const starts: number[] = []
-
-  for (let i = 0; i < lines.length; i++) {
-    if (!DATE_RE.test(lines[i])) continue
-    let headerIdx = i
-    for (let j = i - 1; j >= 0; j--) {
-      const trimmed = lines[j].trim()
-      if (trimmed === '' || BULLET_RE.test(lines[j])) break
-      headerIdx = j
-    }
-    if (starts.length === 0 || starts[starts.length - 1] !== headerIdx) {
-      starts.push(headerIdx)
-    }
-  }
-
-  if (starts.length < 2) return [content.trim()]
-
-  const entries: string[] = []
-  if (starts[0] > 0) {
-    const pre = lines.slice(0, starts[0]).join('\n').trim()
-    if (pre) entries.push(pre)
-  }
-  for (let i = 0; i < starts.length; i++) {
-    const from = starts[i]
-    const to = i + 1 < starts.length ? starts[i + 1] : lines.length
-    const entry = lines.slice(from, to).join('\n').trim()
-    if (entry) entries.push(entry)
-  }
-
-  return entries.length > 1 ? entries : [content.trim()]
-}
-
-function SectionEntries({ content, sectionType }: { content: string; sectionType: string }) {
-  if (sectionType === 'skills' || sectionType === 'contact') {
-    return (
-      <pre
-        style={{
-          fontFamily: 'inherit',
-          whiteSpace: 'pre-wrap',
-          color: 'var(--text)',
-          fontSize: '13px',
-          lineHeight: '1.65',
-        }}
-      >
-        {content}
-      </pre>
-    )
-  }
-
-  const entries = splitEntries(content)
-  if (entries.length <= 1) {
-    return (
-      <pre
-        style={{
-          fontFamily: 'inherit',
-          whiteSpace: 'pre-wrap',
-          color: 'var(--text)',
-          fontSize: '13px',
-          lineHeight: '1.65',
-        }}
-      >
-        {content}
-      </pre>
-    )
-  }
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-      {entries.map((entry, i) => {
-        const lines = entry.split('\n')
-        const headline = lines[0]
-        const body = lines.slice(1).join('\n')
-        return (
-          <div
-            key={i}
-            style={{
-              borderLeft: '2px solid var(--accent)',
-              paddingLeft: '12px',
-              paddingBottom: '4px',
-            }}
-          >
-            <div
-              style={{
-                color: 'var(--accent-dim)',
-                fontSize: '13px',
-                fontWeight: 600,
-                marginBottom: body ? '4px' : 0,
-              }}
-            >
-              {headline}
-            </div>
-            {body && (
-              <pre
-                style={{
-                  fontFamily: 'inherit',
-                  whiteSpace: 'pre-wrap',
-                  color: 'var(--text)',
-                  fontSize: '12px',
-                  lineHeight: '1.6',
-                  margin: 0,
-                }}
-              >
-                {body}
-              </pre>
-            )}
-          </div>
-        )
-      })}
-    </div>
-  )
-}
 
 export default function ResumeDetail({ resume, onDelete, activeTab, onTabChange }: Props) {
   const sectionTabs = SECTION_ORDER.filter((s) => resume.sections[s])
@@ -244,10 +122,17 @@ export default function ResumeDetail({ resume, onDelete, activeTab, onTabChange 
             />
           ) : (
             <div style={{ flex: 1, overflow: 'auto', padding: '16px' }}>
-              <SectionEntries
-                content={resume.sections[activeTab] ?? ''}
-                sectionType={activeTab}
-              />
+              <pre
+                style={{
+                  fontFamily: 'inherit',
+                  whiteSpace: 'pre-wrap',
+                  color: 'var(--text)',
+                  fontSize: '13px',
+                  lineHeight: '1.65',
+                }}
+              >
+                {resume.sections[activeTab] ?? ''}
+              </pre>
             </div>
           )}
         </>
