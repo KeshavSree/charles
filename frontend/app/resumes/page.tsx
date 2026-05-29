@@ -34,7 +34,7 @@ export default function ResumesPage() {
     setActiveId(id)
     const d = await fetchResume(id)
     setDetail(d)
-    setActiveTab(SECTION_ORDER.find((s) => d.sections[s]) ?? '')
+    setActiveTab(SECTION_ORDER.find((s) => d.sections[s]) ?? 'pdf')
   }
 
   async function handleDelete() {

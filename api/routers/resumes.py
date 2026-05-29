@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Response, UploadFile
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -118,6 +119,20 @@ async def get_resume(
         uploaded_at=resume.uploaded_at,
         sections=sections,
     )
+
+
+@router.get("/resumes/{resume_id}/file")
+async def get_resume_file(
+    resume_id: str,
+    session: AsyncSession = Depends(get_db),
+) -> FileResponse:
+    resume = await session.get(Resume, resume_id)
+    if not resume:
+        raise HTTPException(status_code=404, detail="Resume not found")
+    path = Path(resume.file_path)
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="File not found on disk")
+    return FileResponse(str(path), media_type="application/pdf")
 
 
 @router.delete("/resumes/{resume_id}", status_code=204, response_class=Response)

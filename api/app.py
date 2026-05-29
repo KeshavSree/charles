@@ -6,7 +6,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from storage.db import create_tables
-from api.routers import jobs, resumes
+from api.routers import jobs, resumes, scraper
 
 
 @asynccontextmanager
@@ -18,3 +18,4 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Charles API", lifespan=lifespan)
 app.include_router(jobs.router, prefix="/api")
 app.include_router(resumes.router, prefix="/api")
+app.include_router(scraper.router, prefix="/api")

@@ -81,3 +81,12 @@ export async function deleteResume(id: string): Promise<void> {
   const res = await fetch(`/api/resumes/${id}`, { method: 'DELETE' })
   if (!res.ok) throw new Error('Failed to delete resume')
 }
+
+export function resumePdfUrl(id: string): string {
+  return `/api/resumes/${id}/file`
+}
+
+export async function runScraper(): Promise<void> {
+  const res = await fetch('/api/scraper/run', { method: 'POST' })
+  if (!res.ok) throw new Error('Scraper failed')
+}

@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import FilterBar from '@/components/FilterBar'
 import JobsTable from '@/components/JobsTable'
-import { fetchJobFilters, fetchJobs, Job, JobFilters } from '@/lib/api'
+import { fetchJobFilters, fetchJobs, Job, JobFilters, runScraper } from '@/lib/api'
 
 const btnStyle: React.CSSProperties = {
   background: 'var(--surface)',
@@ -23,6 +23,7 @@ export default function JobsPage() {
   const [seniority, setSeniority] = useState('')
   const [page, setPage] = useState(1)
   const [loading, setLoading] = useState(false)
+  const [scrapeStatus, setScrapeStatus] = useState<'idle' | 'running' | 'done' | 'error'>('idle')
 
   useEffect(() => {
     fetchJobFilters().then(setFilters).catch(console.error)
@@ -44,6 +45,20 @@ export default function JobsPage() {
     load()
   }, [load])
 
+  async function handleRunScraper() {
+    setScrapeStatus('running')
+    try {
+      await runScraper()
+      setScrapeStatus('done')
+      await fetchJobFilters().then(setFilters).catch(console.error)
+      await load()
+      setTimeout(() => setScrapeStatus('idle'), 3000)
+    } catch {
+      setScrapeStatus('error')
+      setTimeout(() => setScrapeStatus('idle'), 3000)
+    }
+  }
+
   function handleFilter(key: string, value: string) {
     setPage(1)
     if (key === 'search') setSearch(value)
@@ -54,12 +69,29 @@ export default function JobsPage() {
 
   return (
     <div>
-      <h1 style={{ marginBottom: '12px', fontSize: '15px', fontWeight: 600 }}>
-        Jobs{' '}
-        <span style={{ color: 'var(--text-muted)', fontSize: '12px', fontWeight: 400 }}>
-          {loading ? 'loading…' : `(${jobs.length})`}
-        </span>
-      </h1>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+        <h1 style={{ fontSize: '15px', fontWeight: 600 }}>
+          Jobs{' '}
+          <span style={{ color: 'var(--text-muted)', fontSize: '12px', fontWeight: 400 }}>
+            {loading ? 'loading…' : `(${jobs.length})`}
+          </span>
+        </h1>
+        <button
+          onClick={handleRunScraper}
+          disabled={scrapeStatus === 'running'}
+          style={{
+            ...btnStyle,
+            color: scrapeStatus === 'done' ? 'var(--gold)' : scrapeStatus === 'error' ? '#f87171' : 'var(--text)',
+            opacity: scrapeStatus === 'running' ? 0.6 : 1,
+            cursor: scrapeStatus === 'running' ? 'default' : 'pointer',
+          }}
+        >
+          {scrapeStatus === 'idle' && '↻ Scrape Jobs'}
+          {scrapeStatus === 'running' && 'Scraping…'}
+          {scrapeStatus === 'done' && '✓ Done'}
+          {scrapeStatus === 'error' && '✗ Failed'}
+        </button>
+      </div>
       <FilterBar
         companies={filters.companies}
         sources={filters.sources}
