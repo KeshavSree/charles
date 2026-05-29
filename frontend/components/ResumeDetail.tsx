@@ -17,8 +17,47 @@ interface Props {
   onTabChange: (tab: string) => void
 }
 
+const DATE_RE = /\b(19|20)\d{2}\b/
+const BULLET_RE = /^\s*[•\-\*–·◦▪▸►»]/
+
 function splitEntries(content: string): string[] {
-  return content.split(/\n{2,}/).map((e) => e.trim()).filter(Boolean)
+  // 1. Try blank-line split (works when PDF preserves spacing)
+  const blocks = content.split(/\n{2,}/).map((e) => e.trim()).filter(Boolean)
+  if (blocks.length > 1) return blocks
+
+  // 2. Date-boundary split: find lines with a year; walk backward past bullets
+  //    to the first non-bullet line — that's the entry start.
+  const lines = content.split('\n')
+  const starts: number[] = []
+
+  for (let i = 0; i < lines.length; i++) {
+    if (!DATE_RE.test(lines[i])) continue
+    let headerIdx = i
+    for (let j = i - 1; j >= 0; j--) {
+      const trimmed = lines[j].trim()
+      if (trimmed === '' || BULLET_RE.test(lines[j])) break
+      headerIdx = j
+    }
+    if (starts.length === 0 || starts[starts.length - 1] !== headerIdx) {
+      starts.push(headerIdx)
+    }
+  }
+
+  if (starts.length < 2) return [content.trim()]
+
+  const entries: string[] = []
+  if (starts[0] > 0) {
+    const pre = lines.slice(0, starts[0]).join('\n').trim()
+    if (pre) entries.push(pre)
+  }
+  for (let i = 0; i < starts.length; i++) {
+    const from = starts[i]
+    const to = i + 1 < starts.length ? starts[i + 1] : lines.length
+    const entry = lines.slice(from, to).join('\n').trim()
+    if (entry) entries.push(entry)
+  }
+
+  return entries.length > 1 ? entries : [content.trim()]
 }
 
 function SectionEntries({ content, sectionType }: { content: string; sectionType: string }) {
