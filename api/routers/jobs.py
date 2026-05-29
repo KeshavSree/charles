@@ -44,7 +44,7 @@ async def list_jobs(
     page: int = 1,
     limit: int = 100,
     session: AsyncSession = Depends(get_db),
-) -> list[Job]:
+) -> list[JobOut]:
     stmt = select(Job)
     if search:
         stmt = stmt.where(Job.title.ilike(f"%{search}%"))
