@@ -1,8 +1,9 @@
 # Python
 __pycache__/
-*.pyc
+*.py[cod]
 .env
 jobs.db
+.pytest_cache/
 
 # Uploads
 uploads/
@@ -10,6 +11,7 @@ uploads/
 # Node
 frontend/.next/
 frontend/node_modules/
+frontend/out/
 
 # Brainstorm
 .superpowers/
