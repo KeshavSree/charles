@@ -79,6 +79,23 @@ async def upload_resume(
         file_path=str(file_path),
         uploaded_at=datetime.now(tz=timezone.utc),
     ))
+    await session.flush()
+
+    from parser.pdf import extract_text
+    from parser.sections import detect_sections
+
+    try:
+        raw_text = extract_text(str(file_path))
+        sections = detect_sections(raw_text)
+        for section_type, content in sections.items():
+            session.add(ResumeSection(
+                resume_id=resume_id,
+                section_type=section_type,
+                content=content,
+            ))
+    except Exception:
+        pass  # parsing failure must not block the upload
+
     await session.commit()
     return {"id": resume_id}
 
