@@ -1,5 +1,15 @@
-jobs.db
+# Python
 __pycache__/
-*.py[cod]
+*.pyc
 .env
-.idea/
+jobs.db
+
+# Uploads
+uploads/
+
+# Node
+frontend/.next/
+frontend/node_modules/
+
+# Brainstorm
+.superpowers/
