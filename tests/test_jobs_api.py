@@ -101,3 +101,95 @@ async def test_get_filters(client):
     assert "companies" in data
     assert "sources" in data
     assert isinstance(data["companies"], list)
+
+
+async def test_get_filters_populated(client):
+    c, factory = client
+    async with factory() as session:
+        session.add(Job(
+            id="fil1234567890001",
+            source="greenhouse",
+            company="acme",
+            title="Backend Engineer",
+            url="https://example.com/job/f1",
+            seniority="full_time",
+            scraped_at=datetime.now(tz=timezone.utc),
+        ))
+        session.add(Job(
+            id="fil1234567890002",
+            source="ashby",
+            company="globex",
+            title="Data Scientist",
+            url="https://example.com/job/f2",
+            seniority="intern",
+            scraped_at=datetime.now(tz=timezone.utc),
+        ))
+        await session.commit()
+
+    resp = await c.get("/api/jobs/filters")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "acme" in data["companies"]
+    assert "globex" in data["companies"]
+    assert "greenhouse" in data["sources"]
+    assert "ashby" in data["sources"]
+
+
+async def test_company_filter(client):
+    c, factory = client
+    async with factory() as session:
+        session.add(Job(
+            id="cmp1234567890001",
+            source="greenhouse",
+            company="acme",
+            title="Frontend Engineer",
+            url="https://example.com/job/c1",
+            seniority="full_time",
+            scraped_at=datetime.now(tz=timezone.utc),
+        ))
+        session.add(Job(
+            id="cmp1234567890002",
+            source="greenhouse",
+            company="initech",
+            title="Backend Engineer",
+            url="https://example.com/job/c2",
+            seniority="full_time",
+            scraped_at=datetime.now(tz=timezone.utc),
+        ))
+        await session.commit()
+
+    resp = await c.get("/api/jobs?company=acme")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert len(data) == 1
+    assert data[0]["company"] == "acme"
+
+
+async def test_seniority_filter(client):
+    c, factory = client
+    async with factory() as session:
+        session.add(Job(
+            id="sen1234567890001",
+            source="ashby",
+            company="hooli",
+            title="Software Engineer Intern",
+            url="https://example.com/job/s1",
+            seniority="intern",
+            scraped_at=datetime.now(tz=timezone.utc),
+        ))
+        session.add(Job(
+            id="sen1234567890002",
+            source="ashby",
+            company="hooli",
+            title="Senior Software Engineer",
+            url="https://example.com/job/s2",
+            seniority="full_time",
+            scraped_at=datetime.now(tz=timezone.utc),
+        ))
+        await session.commit()
+
+    resp = await c.get("/api/jobs?seniority=intern")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert len(data) == 1
+    assert data[0]["seniority"] == "intern"
