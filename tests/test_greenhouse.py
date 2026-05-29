@@ -42,7 +42,7 @@ async def test_greenhouse_scrape_returns_job_postings(httpx_mock: HTTPXMock):
     assert jobs[0].title == "Software Engineer, Backend"
     assert jobs[0].url == "https://boards.greenhouse.io/stripe/jobs/4567890"
     assert jobs[0].location == "Remote - US"
-    assert jobs[0].description == "<p>We are looking for...</p>"
+    assert jobs[0].description == "We are looking for..."
     assert jobs[0].id == "4567890"
     assert jobs[0].posted_at is None
 

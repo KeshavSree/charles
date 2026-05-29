@@ -44,7 +44,7 @@ async def test_ashby_scrape_returns_job_postings(httpx_mock: HTTPXMock):
     assert jobs[0].title == "Research Engineer"
     assert jobs[0].url == "https://jobs.ashbyhq.com/anthropic/uuid-anthropic-001"
     assert jobs[0].location == "San Francisco, CA"
-    assert jobs[0].description == "<p>Join our research team.</p>"
+    assert jobs[0].description == "Join our research team."
     assert jobs[0].id == "uuid-anthropic-001"
     assert jobs[0].posted_at == datetime(2024, 1, 15, 10, 0, 0, tzinfo=timezone.utc)
 
