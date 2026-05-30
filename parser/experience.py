@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 _DATE_RANGE = re.compile(
     r"(?:"
@@ -29,71 +29,85 @@ class ExperienceEntry:
     description: str = ""
 
 
+def _parse_dates(date_str: str) -> tuple[str, str, bool]:
+    """Return (start_date, end_date, is_current) from a date range string."""
+    halves = re.split(r"\s*[–\-—]\s*", date_str, maxsplit=1)
+    start = halves[0].strip()
+    end = ""
+    is_current = False
+    if len(halves) > 1:
+        end_raw = halves[1].strip()
+        if _PRESENT.fullmatch(end_raw):
+            end = "Present"
+            is_current = True
+        else:
+            end = end_raw
+    return start, end, is_current
+
+
 def extract_experience(section_text: str) -> list[ExperienceEntry]:
     if not section_text.strip():
         return []
 
     lines = section_text.splitlines()
+
+    # Pass 1: find line indices where date ranges appear
+    date_line_indices = [i for i, l in enumerate(lines) if _DATE_RANGE.search(l.strip())]
+    if not date_line_indices:
+        return []
+
+    # For each date line, scan backwards to find header lines (consecutive non-empty
+    # lines immediately preceding the date line).  This cleanly separates the body of
+    # the previous entry from the header of the next entry even when they are adjacent.
+    header_starts: list[int] = []
+    for date_idx in date_line_indices:
+        h = date_idx
+        while h > 0 and lines[h - 1].strip():
+            h -= 1
+        header_starts.append(h)
+
     entries: list[ExperienceEntry] = []
-    current: ExperienceEntry | None = None
-    desc_lines: list[str] = []
-    header_lines: list[str] = []  # lines before the date range in a block
 
-    def flush(entry: ExperienceEntry, desc: list[str]) -> None:
-        entry.description = "\n".join(l for l in desc if l.strip()).strip()
-        entries.append(entry)
+    for idx, date_idx in enumerate(date_line_indices):
+        next_date_idx = date_line_indices[idx + 1] if idx + 1 < len(date_line_indices) else len(lines)
+        next_header_start = header_starts[idx + 1] if idx + 1 < len(date_line_indices) else len(lines)
 
-    for line in lines:
-        stripped = line.strip()
-        m = _DATE_RANGE.search(stripped)
+        # Header: consecutive non-empty lines immediately before this date line
+        header = [lines[i].strip() for i in range(header_starts[idx], date_idx) if lines[i].strip()]
+        date_line = lines[date_idx].strip()
+        # Body: lines after this date line up to the start of the next entry's header
+        body = [l.strip() for l in lines[date_idx + 1:next_header_start] if l.strip()]
 
+        entry = ExperienceEntry()
+
+        # Parse dates from the date line
+        m = _DATE_RANGE.search(date_line)
         if m:
-            # Save previous
-            if current is not None:
-                flush(current, desc_lines)
-
-            current = ExperienceEntry()
-            desc_lines = []
-
             date_str = m.group(0)
-            halves = re.split(r"\s*[–\-—]\s*", date_str, maxsplit=1)
-            current.start_date = halves[0].strip()
-            if len(halves) > 1:
-                end = halves[1].strip()
-                if _PRESENT.match(end):
-                    current.end_date = "Present"
-                    current.is_current = True
-                else:
-                    current.end_date = end
-
-            # Text before the date range on the same line → title prefix
-            prefix = stripped[: m.start()].strip().rstrip("| -")
+            entry.start_date, entry.end_date, entry.is_current = _parse_dates(date_str)
+            # Text before the date range on the same line = inline title prefix
+            prefix = date_line[: m.start()].strip().rstrip("| -")
             if prefix:
-                current.title = prefix
+                entry.title = prefix
 
-            # Assign queued header lines to title/company
-            non_empty = [h for h in header_lines if h.strip()]
-            if non_empty:
-                if not current.title:
-                    current.title = non_empty[0]
-                    if len(non_empty) > 1:
-                        current.company = non_empty[1]
-                else:
-                    current.company = non_empty[0]
-            header_lines = []
+        # Assign header lines to title/company
+        non_empty = [h for h in header if h]
+        if non_empty:
+            if not entry.title:
+                entry.title = non_empty[0]
+                if len(non_empty) > 1:
+                    entry.company = non_empty[1]
+            else:
+                entry.company = non_empty[0]
 
-        elif current is None:
-            # Before first date range: accumulate as header
-            if stripped:
-                header_lines.append(stripped)
-        else:
-            # After date range: first non-empty line with no company yet = company
-            if stripped and not current.company and not stripped.startswith(("•", "-", "·")):
-                current.company = stripped
-            elif stripped:
-                desc_lines.append(stripped)
+        # Description: body lines, excluding the first one if it looks like a company
+        # (company sometimes appears on the line just after the date line)
+        desc_start = 0
+        if body and not entry.company and not body[0].startswith(("•", "-", "·")):
+            entry.company = body[0]
+            desc_start = 1
+        entry.description = "\n".join(body[desc_start:]).strip()
 
-    if current is not None:
-        flush(current, desc_lines)
+        entries.append(entry)
 
     return entries

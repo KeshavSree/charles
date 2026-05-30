@@ -18,6 +18,10 @@ Defined product roadmap
 def test_extracts_two_entries():
     entries = extract_experience(SAMPLE)
     assert len(entries) == 2
+    assert entries[0].title == "Software Engineer"
+    assert entries[0].company == "Acme Corp"
+    assert entries[1].title == "Product Manager"
+    assert entries[1].company == "StartupXYZ"
 
 
 def test_first_entry_dates():
@@ -41,3 +45,14 @@ def test_description_captured():
 
 def test_empty_section_returns_empty_list():
     assert extract_experience("") == []
+
+
+def test_description_does_not_bleed_into_next_entry():
+    entries = extract_experience(SAMPLE)
+    assert "Product Manager" not in entries[0].description
+    assert "StartupXYZ" not in entries[0].description
+
+
+def test_second_entry_description():
+    entries = extract_experience(SAMPLE)
+    assert "roadmap" in entries[1].description
