@@ -2,8 +2,11 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 from datetime import datetime, timezone
 from typing import Optional
+
+_log = logging.getLogger(__name__)
 
 from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -150,13 +153,15 @@ async def generate_profile_from_resume(session: AsyncSession, resume_id: str) ->
     }
 
     resume = await session.get(Resume, resume_id)
-    full_text = sections.get("contact", "") + "\n" + "\n".join(sections.values())
+    full_text = sections.get("contact", "") + "\n" + "\n".join(
+        v for k, v in sections.items() if k != "contact"
+    )
     if resume and resume.file_path:
         try:
             from parser.pdf import extract_text
             full_text = extract_text(resume.file_path)
         except Exception:
-            pass
+            _log.warning("PDF extraction failed for %s", resume.file_path if resume else resume_id, exc_info=True)
 
     contact = extract_contact(full_text, sections.get("contact", ""))
     exp_entries = extract_experience(sections.get("experience", ""))
