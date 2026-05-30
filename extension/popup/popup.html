@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      width: 260px;
+      font-family: system-ui, -apple-system, sans-serif;
+      font-size: 13px;
+      background: #0d0d1a;
+      color: #e2e8f0;
+      padding: 14px;
+    }
+    h1 { font-size: 14px; font-weight: 600; color: #f59e0b; margin-bottom: 12px; }
+    label { display: block; font-size: 11px; color: #6b7280; margin-bottom: 4px; }
+    select {
+      width: 100%;
+      padding: 6px 8px;
+      background: #111122;
+      border: 1px solid #2d2d4e;
+      border-radius: 4px;
+      color: #e2e8f0;
+      font-size: 12px;
+      margin-bottom: 10px;
+    }
+    button {
+      width: 100%;
+      padding: 8px;
+      background: #7c3aed;
+      border: none;
+      border-radius: 4px;
+      color: #fff;
+      font-size: 13px;
+      cursor: pointer;
+      font-weight: 500;
+    }
+    button:disabled { background: #2d2d4e; color: #6b7280; cursor: default; }
+    #status {
+      margin-top: 10px;
+      font-size: 11px;
+      color: #6b7280;
+      min-height: 16px;
+      text-align: center;
+    }
+    #status.ok  { color: #34d399; }
+    #status.err { color: #f87171; }
+  </style>
+</head>
+<body>
+  <h1>Charles Autofill</h1>
+  <label for="resume-select">Resume</label>
+  <select id="resume-select">
+    <option value="">Loading…</option>
+  </select>
+  <button id="fill-btn" disabled>Fill Form</button>
+  <div id="status"></div>
+  <script src="../dist/popup/popup.js"></script>
+</body>
+</html>
