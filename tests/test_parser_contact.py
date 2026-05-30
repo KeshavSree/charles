@@ -44,3 +44,12 @@ def test_missing_fields_are_empty_string():
     assert info.email == ""
     assert info.phone == ""
     assert info.linkedin_url == ""
+    assert info.location == ""
+    assert info.first_name == ""
+    assert info.last_name == ""
+
+
+def test_extracts_bare_linkedin_url():
+    text = "Jane Smith\njane@example.com\nlinkedin.com/in/janesmith"
+    info = extract_contact(text)
+    assert info.linkedin_url == "linkedin.com/in/janesmith"

@@ -4,8 +4,8 @@ import re
 from dataclasses import dataclass
 
 _EMAIL = re.compile(r"[\w.+-]+@[\w-]+\.[a-z]{2,}", re.IGNORECASE)
-_PHONE = re.compile(r"\(?\d{3}\)?[\s.\-]\d{3}[\s.\-]\d{4}")
-_LINKEDIN = re.compile(r"https?://(?:www\.)?linkedin\.com/in/[\w\-]+", re.IGNORECASE)
+_PHONE = re.compile(r"(?:\(\d{3}\)|\d{3})[\s.\-]\d{3}[\s.\-]\d{4}")
+_LINKEDIN = re.compile(r"(?:https?://)?(?:www\.)?linkedin\.com/in/[\w\-]+", re.IGNORECASE)
 _LOCATION = re.compile(r"[A-Z][a-z]+(?: [A-Z][a-z]+)?,\s+[A-Z]{2}\b")
 
 
