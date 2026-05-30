@@ -146,3 +146,39 @@ export async function generateProfile(resumeId: string): Promise<Profile> {
   if (!res.ok) throw new Error('Failed to generate profile')
   return res.json()
 }
+
+export interface UserInfo {
+  first_name: string
+  last_name: string
+  email: string
+  phone: string | null
+  linkedin_url: string | null
+  address: string | null
+  city: string | null
+  state: string | null
+  zip_code: string | null
+  country: string | null
+  work_auth: string | null
+  work_authorized: boolean | null
+  requires_sponsorship: boolean | null
+  gender: string | null
+  ethnicity: string | null
+  veteran_status: string | null
+  disability_status: string | null
+}
+
+export async function fetchInfo(): Promise<UserInfo> {
+  const res = await fetch('/api/info')
+  if (!res.ok) throw new Error('Failed to load info')
+  return res.json()
+}
+
+export async function updateInfo(data: UserInfo): Promise<UserInfo> {
+  const res = await fetch('/api/info', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  })
+  if (!res.ok) throw new Error('Failed to save info')
+  return res.json()
+}
