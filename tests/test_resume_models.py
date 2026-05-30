@@ -34,3 +34,40 @@ async def test_resume_and_sections_persist(session):
     s = (await session.execute(select(ResumeSection).where(ResumeSection.resume_id == resume_id))).scalar_one()
     assert s.section_type == "skills"
     assert s.content == "Python, Go"
+
+
+async def test_profile_tables_exist(db_session):
+    from storage.models import Profile, ProfileExperience, ProfileEducation
+    from datetime import datetime, timezone
+    now = datetime.now(tz=timezone.utc)
+    profile = Profile(
+        id="test-resume-id",
+        first_name="Jane",
+        last_name="Smith",
+        email="jane@example.com",
+        created_at=now,
+        updated_at=now,
+    )
+    db_session.add(profile)
+    await db_session.flush()
+
+    exp = ProfileExperience(
+        profile_id="test-resume-id",
+        company="Acme",
+        title="Engineer",
+        display_order=0,
+        is_current=False,
+    )
+    db_session.add(exp)
+
+    edu = ProfileEducation(
+        profile_id="test-resume-id",
+        institution="UC Berkeley",
+        display_order=0,
+    )
+    db_session.add(edu)
+    await db_session.commit()
+
+    from sqlalchemy import select
+    result = await db_session.execute(select(Profile))
+    assert result.scalar_one().email == "jane@example.com"

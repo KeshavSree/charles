@@ -4,7 +4,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import String, Text, DateTime, Integer, ForeignKey
+from sqlalchemy import String, Text, DateTime, Integer, ForeignKey, Boolean
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -57,3 +57,49 @@ class ResumeSection(Base):
     )
     section_type: Mapped[str] = mapped_column(String(64), nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class Profile(Base):
+    __tablename__ = "profiles"
+
+    id: Mapped[str] = mapped_column(String(36), ForeignKey("resumes.id"), primary_key=True)
+    first_name: Mapped[str] = mapped_column(String(128), nullable=False, default="")
+    last_name: Mapped[str] = mapped_column(String(128), nullable=False, default="")
+    email: Mapped[str] = mapped_column(String(256), nullable=False, default="")
+    phone: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    linkedin_url: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    location: Mapped[Optional[str]] = mapped_column(String(256), nullable=True)
+    work_auth: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class ProfileExperience(Base):
+    __tablename__ = "profile_experience"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    profile_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("profiles.id"), nullable=False
+    )
+    company: Mapped[str] = mapped_column(String(256), nullable=False, default="")
+    title: Mapped[str] = mapped_column(String(256), nullable=False, default="")
+    start_date: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    end_date: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    is_current: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    display_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+
+class ProfileEducation(Base):
+    __tablename__ = "profile_education"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    profile_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("profiles.id"), nullable=False
+    )
+    institution: Mapped[str] = mapped_column(String(256), nullable=False, default="")
+    degree: Mapped[Optional[str]] = mapped_column(String(256), nullable=True)
+    major: Mapped[Optional[str]] = mapped_column(String(256), nullable=True)
+    gpa: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
+    grad_year: Mapped[Optional[str]] = mapped_column(String(8), nullable=True)
+    display_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
