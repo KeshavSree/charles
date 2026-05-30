@@ -90,3 +90,59 @@ export async function runScraper(): Promise<void> {
   const res = await fetch('/api/scraper/run', { method: 'POST' })
   if (!res.ok) throw new Error('Scraper failed')
 }
+
+export interface ProfileExperience {
+  id?: number
+  company: string
+  title: string
+  start_date: string | null
+  end_date: string | null
+  is_current: boolean
+  description: string | null
+  display_order: number
+}
+
+export interface ProfileEducation {
+  id?: number
+  institution: string
+  degree: string | null
+  major: string | null
+  gpa: string | null
+  grad_year: string | null
+  display_order: number
+}
+
+export interface Profile {
+  resume_id: string
+  first_name: string
+  last_name: string
+  email: string
+  phone: string | null
+  linkedin_url: string | null
+  location: string | null
+  work_auth: string | null
+  experience: ProfileExperience[]
+  education: ProfileEducation[]
+}
+
+export async function fetchProfile(resumeId: string): Promise<Profile> {
+  const res = await fetch(`/api/profile/${resumeId}`)
+  if (!res.ok) throw new Error('Profile not found')
+  return res.json()
+}
+
+export async function updateProfile(resumeId: string, data: Omit<Profile, 'resume_id'>): Promise<Profile> {
+  const res = await fetch(`/api/profile/${resumeId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  })
+  if (!res.ok) throw new Error('Failed to update profile')
+  return res.json()
+}
+
+export async function generateProfile(resumeId: string): Promise<Profile> {
+  const res = await fetch(`/api/profile/${resumeId}/generate`, { method: 'POST' })
+  if (!res.ok) throw new Error('Failed to generate profile')
+  return res.json()
+}
