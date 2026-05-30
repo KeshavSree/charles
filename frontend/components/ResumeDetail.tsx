@@ -1,5 +1,6 @@
 'use client'
 import { ResumeDetail as ResumeDetailType, resumePdfUrl } from '@/lib/api'
+import ProfileEditor from './ProfileEditor'
 
 const SECTION_ORDER = ['contact', 'experience', 'education', 'projects', 'skills']
 const SECTION_LABELS: Record<string, string> = {
@@ -8,6 +9,7 @@ const SECTION_LABELS: Record<string, string> = {
   education: 'Education',
   projects: 'Projects',
   skills: 'Skills',
+  profile: 'Profile',
 }
 
 interface Props {
@@ -20,7 +22,7 @@ interface Props {
 
 export default function ResumeDetail({ resume, onDelete, activeTab, onTabChange }: Props) {
   const sectionTabs = SECTION_ORDER.filter((s) => resume.sections[s])
-  const allTabs = [...sectionTabs, 'pdf']
+  const allTabs = [...sectionTabs, 'profile', 'pdf']
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
@@ -51,35 +53,7 @@ export default function ResumeDetail({ resume, onDelete, activeTab, onTabChange 
         </button>
       </div>
 
-      {allTabs.length === 1 /* only PDF tab, no sections */ && activeTab !== 'pdf' ? (
-        <div
-          style={{
-            flex: 1,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            color: 'var(--text-muted)',
-            fontSize: '13px',
-          }}
-        >
-          No sections parsed yet. View the{' '}
-          <button
-            onClick={() => onTabChange('pdf')}
-            style={{
-              background: 'none',
-              border: 'none',
-              color: 'var(--accent-dim)',
-              cursor: 'pointer',
-              fontSize: '13px',
-              padding: '0 4px',
-            }}
-          >
-            PDF
-          </button>{' '}
-          tab to see the original document.
-        </div>
-      ) : (
-        <>
+      <>
           <div
             style={{
               display: 'flex',
@@ -98,7 +72,7 @@ export default function ResumeDetail({ resume, onDelete, activeTab, onTabChange 
                   border: 'none',
                   borderBottom: `2px solid ${activeTab === tab ? 'var(--accent)' : 'transparent'}`,
                   color:
-                    tab === 'pdf'
+                    tab === 'pdf' || tab === 'profile'
                       ? activeTab === tab
                         ? 'var(--gold)'
                         : 'var(--text-muted)'
@@ -109,7 +83,7 @@ export default function ResumeDetail({ resume, onDelete, activeTab, onTabChange 
                   fontSize: '12px',
                 }}
               >
-                {tab === 'pdf' ? 'PDF' : (SECTION_LABELS[tab] ?? tab)}
+                {SECTION_LABELS[tab] ?? tab.toUpperCase()}
               </button>
             ))}
           </div>
@@ -120,6 +94,8 @@ export default function ResumeDetail({ resume, onDelete, activeTab, onTabChange 
               style={{ flex: 1, border: 'none', width: '100%' }}
               title={resume.filename}
             />
+          ) : activeTab === 'profile' ? (
+            <ProfileEditor resumeId={resume.id} />
           ) : (
             <div style={{ flex: 1, overflow: 'auto', padding: '16px' }}>
               <pre
@@ -136,7 +112,6 @@ export default function ResumeDetail({ resume, onDelete, activeTab, onTabChange 
             </div>
           )}
         </>
-      )}
     </div>
   )
 }
