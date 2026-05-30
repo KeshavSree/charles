@@ -103,3 +103,27 @@ class ProfileEducation(Base):
     gpa: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
     grad_year: Mapped[Optional[str]] = mapped_column(String(8), nullable=True)
     display_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+
+class UserInfo(Base):
+    __tablename__ = "user_info"
+
+    id: Mapped[str] = mapped_column(String(16), primary_key=True, default="default")
+    first_name: Mapped[str] = mapped_column(String(128), nullable=False, default="")
+    last_name: Mapped[str] = mapped_column(String(128), nullable=False, default="")
+    email: Mapped[str] = mapped_column(String(256), nullable=False, default="")
+    phone: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    linkedin_url: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    address: Mapped[Optional[str]] = mapped_column(String(256), nullable=True)
+    city: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    state: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    zip_code: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
+    country: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    work_auth: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    work_authorized: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
+    requires_sponsorship: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
+    gender: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    ethnicity: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    veteran_status: Mapped[Optional[str]] = mapped_column(String(256), nullable=True)
+    disability_status: Mapped[Optional[str]] = mapped_column(String(256), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
