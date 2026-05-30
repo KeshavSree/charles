@@ -82,3 +82,15 @@ async def test_delete_resume(client):
 async def test_delete_resume_not_found(client):
     resp = await client.delete("/api/resumes/nonexistent-id")
     assert resp.status_code == 404
+
+
+async def test_upload_pdf_auto_generates_profile(client):
+    resp = await client.post(
+        "/api/resumes",
+        files={"file": ("cv.pdf", b"%PDF-1.4 fake", "application/pdf")},
+    )
+    assert resp.status_code == 201
+    resume_id = resp.json()["id"]
+
+    profile_resp = await client.get(f"/api/profile/{resume_id}")
+    assert profile_resp.status_code == 200

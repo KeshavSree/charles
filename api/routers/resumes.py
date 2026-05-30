@@ -98,6 +98,13 @@ async def upload_resume(
         pass  # parsing failure must not block the upload
 
     await session.commit()
+
+    try:
+        from storage.repository import generate_profile_from_resume
+        await generate_profile_from_resume(session, resume_id)
+    except Exception:
+        pass  # profile generation failure must not block the upload
+
     return {"id": resume_id}
 
 
