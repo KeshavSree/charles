@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.deps import get_db
 from storage.models import Profile, ProfileExperience, ProfileEducation, Resume
-from storage.repository import get_profile, save_profile, generate_profile_from_resume
+from storage.repository import get_profile, generate_profile_from_resume
 
 router = APIRouter()
 

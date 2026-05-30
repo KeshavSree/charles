@@ -1,8 +1,6 @@
 # tests/test_profiles_api.py
 from __future__ import annotations
 
-import pathlib
-import tempfile
 from datetime import datetime, timezone
 
 import pytest
@@ -88,3 +86,22 @@ async def test_put_profile_updates_fields(client, resume_id):
     fetched = await client.get(f"/api/profile/{resume_id}")
     assert fetched.json()["first_name"] == "Jane"
     assert fetched.json()["work_auth"] == "US Citizen"
+
+
+async def test_put_creates_profile_without_prior_generate(client, resume_id):
+    payload = {
+        "first_name": "Alice",
+        "last_name": "Jones",
+        "email": "alice@example.com",
+        "phone": None,
+        "linkedin_url": None,
+        "location": None,
+        "work_auth": None,
+        "experience": [],
+        "education": [],
+    }
+    resp = await client.put(f"/api/profile/{resume_id}", json=payload)
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["first_name"] == "Alice"
+    assert data["resume_id"] == resume_id
