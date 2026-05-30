@@ -1,10 +1,13 @@
 # api/routers/resumes.py
 from __future__ import annotations
 
+import logging
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
+
+_log = logging.getLogger(__name__)
 
 from fastapi import APIRouter, Depends, HTTPException, Response, UploadFile
 from fastapi.responses import FileResponse
@@ -14,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.deps import get_db
 from storage.models import Resume, ResumeSection
+from storage.repository import generate_profile_from_resume
 
 UPLOADS_DIR = Path(__file__).parent.parent.parent / "uploads"
 UPLOADS_DIR.mkdir(exist_ok=True)
@@ -100,10 +104,9 @@ async def upload_resume(
     await session.commit()
 
     try:
-        from storage.repository import generate_profile_from_resume
         await generate_profile_from_resume(session, resume_id)
     except Exception:
-        pass  # profile generation failure must not block the upload
+        _log.warning("Profile generation failed for resume %s", resume_id, exc_info=True)
 
     return {"id": resume_id}
 
