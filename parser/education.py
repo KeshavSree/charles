@@ -4,7 +4,7 @@ import re
 from dataclasses import dataclass
 
 _YEAR = re.compile(r"\b(20\d{2}|19\d{2})\b")
-_GPA = re.compile(r"GPA[:\s]+(\d\.\d)", re.IGNORECASE)
+_GPA = re.compile(r"GPA[:\s]+(\d\.\d+)", re.IGNORECASE)
 _DEGREE_KEYWORDS = re.compile(
     r"\b(Bachelor|Master|PhD|Doctor|Associate|B\.?S\.?|M\.?S\.?|B\.?A\.?|M\.?A\.?|M\.?Eng\.?)\b",
     re.IGNORECASE,
@@ -45,7 +45,8 @@ def extract_education(section_text: str) -> list[EducationEntry]:
                 parts = _MAJOR_SPLIT.split(line, maxsplit=1)
                 entry.degree = parts[0].strip().split("|")[0].strip()
                 if len(parts) > 1:
-                    entry.major = parts[1].strip().split("|")[0].strip()
+                    raw_major = parts[1].split("|")[0]
+                    entry.major = _YEAR.sub("", raw_major).strip().strip(",").strip()
         entries.append(entry)
 
     for line in lines:

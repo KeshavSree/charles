@@ -38,5 +38,11 @@ def test_degree_parsed():
     assert "Bachelor" in entries[0].degree
 
 
+def test_major_parsed():
+    entries = extract_education(SAMPLE)
+    assert entries[0].major == "Computer Science"
+    assert entries[1].major == "Computer Engineering"
+
+
 def test_empty_section_returns_empty_list():
     assert extract_education("") == []
