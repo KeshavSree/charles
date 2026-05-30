@@ -1,0 +1,33 @@
+{
+  "manifest_version": 3,
+  "name": "Charles Autofill",
+  "version": "1.0.0",
+  "description": "Auto-fill job applications from your Charles resume profile",
+  "permissions": ["storage", "activeTab"],
+  "host_permissions": [
+    "http://localhost:8000/*",
+    "*://*.greenhouse.io/*",
+    "*://*.lever.co/*",
+    "*://*.ashbyhq.com/*",
+    "*://*.myworkdayjobs.com/*"
+  ],
+  "background": {
+    "service_worker": "dist/background/service-worker.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "*://*.greenhouse.io/applications/*",
+        "*://*.lever.co/*/apply*",
+        "*://*.ashbyhq.com/*/application*",
+        "*://*.myworkdayjobs.com/*"
+      ],
+      "js": ["dist/content/index.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_title": "Charles Autofill"
+  }
+}
