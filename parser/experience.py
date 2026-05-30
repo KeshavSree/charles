@@ -60,10 +60,18 @@ def extract_experience(section_text: str) -> list[ExperienceEntry]:
     # lines immediately preceding the date line).  This cleanly separates the body of
     # the previous entry from the header of the next entry even when they are adjacent.
     header_starts: list[int] = []
-    for date_idx in date_line_indices:
+    for enum_idx, date_idx in enumerate(date_line_indices):
+        # Lower bound: the line immediately after the previous entry's date line
+        # (prevents absorbing body lines of the previous entry as this entry's header)
+        lower_bound = date_line_indices[enum_idx - 1] + 1 if enum_idx > 0 else 0
         h = date_idx
-        while h > 0 and lines[h - 1].strip():
+        while h > lower_bound and lines[h - 1].strip() and not _DATE_RANGE.search(lines[h - 1]):
             h -= 1
+        # Cap to at most 2 non-blank header lines (title + company); if more were
+        # collected it means we swept into the previous entry's description body.
+        non_blank = [i for i in range(h, date_idx) if lines[i].strip()]
+        if len(non_blank) > 2:
+            h = non_blank[-2]  # keep only the last 2 non-blank lines
         header_starts.append(h)
 
     entries: list[ExperienceEntry] = []

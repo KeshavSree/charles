@@ -43,6 +43,7 @@ function getFields(ats: ReturnType<typeof detectAts>): Record<string, HTMLElemen
 
 function buildValueMap(profile: Profile): Record<string, string> {
   const map: Record<string, string> = {
+    full_name:  `${profile.first_name} ${profile.last_name}`.trim(),
     first_name: profile.first_name,
     last_name:  profile.last_name,
     email:      profile.email,

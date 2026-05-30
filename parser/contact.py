@@ -46,13 +46,15 @@ def extract_contact(full_text: str, contact_section: str = "") -> ContactInfo:
         if _EMAIL.search(stripped) or _PHONE.search(stripped) or _LINKEDIN.search(stripped):
             continue
         parts = stripped.split()
-        if (
-            len(parts) >= 2
-            and all(p[0].isupper() for p in parts[:2] if p)
-            and all(c.isalpha() or c in "-'" for c in parts[0])
-        ):
-            info.first_name = parts[0]
-            info.last_name = parts[-1]
-            break
+        if len(parts) >= 2 and all(c.isalpha() or c in "-'" for c in parts[0]) and parts[0][0].isupper():
+            # Find last_name: first token after parts[0] that is alpha-only and title-case
+            last = next(
+                (p for p in parts[1:] if p[0].isupper() and all(c.isalpha() or c in "-'" for c in p)),
+                None,
+            )
+            if last:
+                info.first_name = parts[0]
+                info.last_name = last
+                break
 
     return info

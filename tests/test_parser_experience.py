@@ -56,3 +56,16 @@ def test_description_does_not_bleed_into_next_entry():
 def test_second_entry_description():
     entries = extract_experience(SAMPLE)
     assert "roadmap" in entries[1].description
+
+
+def test_adjacent_entries_no_blank_lines():
+    text = (
+        "Software Engineer\nAcme Corp\nJan 2022 – Mar 2024\nBuilt things\n"
+        "Product Manager\nStartupXYZ\nJun 2020 – Dec 2021\nLed roadmap"
+    )
+    entries = extract_experience(text)
+    assert len(entries) == 2
+    assert entries[0].title == "Software Engineer"
+    assert entries[0].company == "Acme Corp"
+    assert entries[1].title == "Product Manager"
+    assert entries[1].company == "StartupXYZ"

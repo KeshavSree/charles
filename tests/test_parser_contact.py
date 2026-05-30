@@ -53,3 +53,10 @@ def test_extracts_bare_linkedin_url():
     text = "Jane Smith\njane@example.com\nlinkedin.com/in/janesmith"
     info = extract_contact(text)
     assert info.linkedin_url == "linkedin.com/in/janesmith"
+
+
+def test_extracts_name_with_pipe_separator():
+    text = "John Smith | Software Engineer\njohn@example.com"
+    info = extract_contact(text)
+    assert info.first_name == "John"
+    assert info.last_name == "Smith"
