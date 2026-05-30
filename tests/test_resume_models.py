@@ -37,9 +37,20 @@ async def test_resume_and_sections_persist(session):
 
 
 async def test_profile_tables_exist(db_session):
-    from storage.models import Profile, ProfileExperience, ProfileEducation
+    from storage.models import Resume, Profile, ProfileExperience, ProfileEducation
+    from sqlalchemy import select
     from datetime import datetime, timezone
     now = datetime.now(tz=timezone.utc)
+
+    resume = Resume(
+        id="test-resume-id",
+        filename="test.pdf",
+        file_path="/uploads/test.pdf",
+        uploaded_at=now,
+    )
+    db_session.add(resume)
+    await db_session.flush()
+
     profile = Profile(
         id="test-resume-id",
         first_name="Jane",
@@ -68,6 +79,11 @@ async def test_profile_tables_exist(db_session):
     db_session.add(edu)
     await db_session.commit()
 
-    from sqlalchemy import select
     result = await db_session.execute(select(Profile))
     assert result.scalar_one().email == "jane@example.com"
+
+    exp_result = await db_session.execute(select(ProfileExperience))
+    assert exp_result.scalar_one().company == "Acme"
+
+    edu_result = await db_session.execute(select(ProfileEducation))
+    assert edu_result.scalar_one().institution == "UC Berkeley"
