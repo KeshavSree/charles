@@ -11,7 +11,7 @@ const shared = {
 
 const entryPoints = [
   { in: 'background/service-worker.ts', out: 'background/service-worker' },
-  { in: 'content/index.ts',             out: 'content/index' },
+  { in: 'content/engine/index.ts',      out: 'content/engine' },
   { in: 'popup/popup.ts',               out: 'popup/popup' },
 ]
 
