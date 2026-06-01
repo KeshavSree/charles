@@ -32,6 +32,32 @@ function Field({ label, value, onChange }: { label: string; value: string; onCha
   )
 }
 
+const DATE_RE = /^\d{1,2}\/\d{4}$/
+
+function DateField({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
+  const invalid = value.length > 0 && !DATE_RE.test(value.trim())
+  return (
+    <div style={{ marginBottom: '10px' }}>
+      <label style={LABEL_STYLE}>{label}</label>
+      <input
+        style={{
+          ...FIELD_STYLE,
+          borderColor: invalid ? '#f87171' : undefined,
+          outline: invalid ? '1px solid #f87171' : undefined,
+        }}
+        placeholder="MM/YYYY"
+        value={value ?? ''}
+        onChange={(e) => onChange(e.target.value)}
+      />
+      {invalid && (
+        <span style={{ fontSize: '10px', color: '#f87171', marginTop: '2px', display: 'block' }}>
+          Use MM/YYYY (e.g. 06/2023)
+        </span>
+      )}
+    </div>
+  )
+}
+
 function ExpCard({
   entry, index, onChange, onDelete,
 }: {
@@ -46,9 +72,24 @@ function ExpCard({
     <div style={{ border: '1px solid var(--border)', borderRadius: '6px', padding: '10px', marginBottom: '8px' }}>
       <Field label="Title" value={entry.title} onChange={set('title')} />
       <Field label="Company" value={entry.company} onChange={set('company')} />
+      <Field label="Location" value={entry.location ?? ''} onChange={set('location')} />
       <div style={{ display: 'flex', gap: '8px' }}>
-        <div style={{ flex: 1 }}><Field label="Start" value={entry.start_date ?? ''} onChange={set('start_date')} /></div>
-        <div style={{ flex: 1 }}><Field label="End" value={entry.end_date ?? ''} onChange={set('end_date')} /></div>
+        <div style={{ flex: 1 }}>
+          <DateField label="Start (MM/YYYY)" value={entry.start_date ?? ''} onChange={set('start_date')} />
+          <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', color: 'var(--text-muted)', cursor: 'pointer', marginBottom: '10px' }}>
+            <input
+              type="checkbox"
+              checked={entry.is_current}
+              onChange={() => onChange(index, { ...entry, is_current: !entry.is_current, end_date: !entry.is_current ? null : entry.end_date })}
+            />
+            Current Role
+          </label>
+        </div>
+        {!entry.is_current && (
+          <div style={{ flex: 1 }}>
+            <DateField label="End (MM/YYYY)" value={entry.end_date ?? ''} onChange={set('end_date')} />
+          </div>
+        )}
       </div>
       <div style={{ marginBottom: '10px' }}>
         <label style={LABEL_STYLE}>Description</label>
@@ -81,7 +122,19 @@ function EduCard({
   return (
     <div style={{ border: '1px solid var(--border)', borderRadius: '6px', padding: '10px', marginBottom: '8px' }}>
       <Field label="Institution" value={entry.institution} onChange={set('institution')} />
-      <Field label="Degree" value={entry.degree ?? ''} onChange={set('degree')} />
+      <div style={{ marginBottom: '10px' }}>
+        <label style={LABEL_STYLE}>Degree</label>
+        <select
+          style={{ ...FIELD_STYLE, cursor: 'pointer' }}
+          value={entry.degree ?? ''}
+          onChange={(e) => onChange(index, { ...entry, degree: e.target.value || null })}
+        >
+          <option value="">—</option>
+          <option value="B.S.">B.S. — Bachelor of Science</option>
+          <option value="M.S.">M.S. — Master of Science</option>
+          <option value="PhD">PhD — Doctor of Philosophy</option>
+        </select>
+      </div>
       <Field label="Major" value={entry.major ?? ''} onChange={set('major')} />
       <div style={{ display: 'flex', gap: '8px' }}>
         <div style={{ flex: 1 }}><Field label="GPA" value={entry.gpa ?? ''} onChange={set('gpa')} /></div>
@@ -147,7 +200,7 @@ export default function ProfileEditor({ resumeId }: { resumeId: string }) {
   const addExp = () =>
     setProfile((p) => ({
       ...p,
-      experience: [...p.experience, { company: '', title: '', start_date: null, end_date: null, is_current: false, description: null, display_order: p.experience.length }],
+      experience: [...p.experience, { company: '', title: '', location: null, start_date: null, end_date: null, is_current: false, description: null, display_order: p.experience.length }],
     }))
 
   const updateEdu = (i: number, e: ProfileEducation) =>

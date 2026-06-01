@@ -19,6 +19,7 @@ class ExperienceOut(BaseModel):
     id: int | None = None
     company: str
     title: str
+    location: str | None = None
     start_date: str | None
     end_date: str | None
     is_current: bool
@@ -56,6 +57,7 @@ class ProfileOut(BaseModel):
 class ExperienceIn(BaseModel):
     company: str = ""
     title: str = ""
+    location: str | None = None
     start_date: str | None = None
     end_date: str | None = None
     is_current: bool = False
@@ -164,7 +166,7 @@ async def update_profile(
     )
     for i, e in enumerate(body.experience):
         session.add(ProfileExperience(
-            profile_id=resume_id, company=e.company, title=e.title,
+            profile_id=resume_id, company=e.company, title=e.title, location=e.location,
             start_date=e.start_date, end_date=e.end_date, is_current=e.is_current,
             description=e.description, display_order=i,
         ))

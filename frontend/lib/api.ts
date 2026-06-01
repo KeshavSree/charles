@@ -95,6 +95,7 @@ export interface ProfileExperience {
   id?: number
   company: string
   title: string
+  location: string | null
   start_date: string | null
   end_date: string | null
   is_current: boolean
@@ -147,25 +148,8 @@ export async function generateProfile(resumeId: string): Promise<Profile> {
   return res.json()
 }
 
-export interface UserInfo {
-  first_name: string
-  last_name: string
-  email: string
-  phone: string | null
-  linkedin_url: string | null
-  address: string | null
-  city: string | null
-  state: string | null
-  zip_code: string | null
-  country: string | null
-  work_auth: string | null
-  work_authorized: boolean | null
-  requires_sponsorship: boolean | null
-  gender: string | null
-  ethnicity: string | null
-  veteran_status: string | null
-  disability_status: string | null
-}
+import type { UserInfo } from '@/lib/fields'
+export type { UserInfo }
 
 export async function fetchInfo(): Promise<UserInfo> {
   const res = await fetch('/api/info')

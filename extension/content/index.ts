@@ -11,7 +11,6 @@ interface Profile {
   phone: string | null
   linkedin_url: string | null
   location: string | null
-  work_auth: string | null
   experience: Array<{
     company: string; title: string; start_date: string | null;
     end_date: string | null; description: string | null;
@@ -50,7 +49,6 @@ function buildValueMap(profile: Profile): Record<string, string> {
     phone:      profile.phone ?? '',
     linkedin:   profile.linkedin_url ?? '',
     location:   profile.location ?? '',
-    work_auth:  profile.work_auth ?? '',
   }
   profile.experience.forEach((e, i) => {
     map[`experience_${i}_company`] = e.company

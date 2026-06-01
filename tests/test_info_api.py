@@ -50,19 +50,17 @@ async def test_put_info_updates_fields(client):
         "email": "jane@example.com",
         "phone": "415-555-0100",
         "linkedin_url": None,
-        "location": "San Francisco, CA",
-        "work_auth": "US Citizen",
     }
     resp = await client.put("/api/info", json=payload)
     assert resp.status_code == 200
     assert resp.json()["first_name"] == "Jane"
-    assert resp.json()["work_auth"] == "US Citizen"
+    assert resp.json()["phone"] == "415-555-0100"
 
 
 async def test_get_after_put_reflects_update(client):
     await client.put("/api/info", json={
         "first_name": "Jane", "last_name": "Smith", "email": "jane@example.com",
-        "phone": None, "linkedin_url": None, "location": None, "work_auth": None,
+        "phone": None, "linkedin_url": None,
     })
     resp = await client.get("/api/info")
     assert resp.json()["first_name"] == "Jane"
@@ -73,7 +71,7 @@ async def test_put_info_boolean_fields(client):
         "first_name": "", "last_name": "", "email": "",
         "phone": None, "linkedin_url": None,
         "address": None, "city": None, "state": None,
-        "zip_code": None, "country": None, "work_auth": None,
+        "zip_code": None, "country": None,
         "work_authorized": True,
         "requires_sponsorship": False,
         "gender": "Male",
@@ -95,7 +93,7 @@ async def test_put_info_null_booleans_preserved(client):
         "first_name": "", "last_name": "", "email": "",
         "phone": None, "linkedin_url": None,
         "address": None, "city": None, "state": None,
-        "zip_code": None, "country": None, "work_auth": None,
+        "zip_code": None, "country": None,
         "work_authorized": None, "requires_sponsorship": None,
         "gender": None, "ethnicity": None,
         "veteran_status": None, "disability_status": None,

@@ -16,18 +16,19 @@ function wdSelect(automationId: string): HTMLElement | null {
 
 export function detectFieldsWorkday(): Record<string, HTMLElement | null> {
   return {
-    first_name: wd('legalNameSection_firstName')
+    first_name: wd('formField-legalName--firstName')
+              ?? wd('legalNameSection_firstName')
               ?? wd('firstName'),
-    last_name:  wd('legalNameSection_lastName')
+    last_name:  wd('formField-legalName--lastName')
+              ?? wd('legalNameSection_lastName')
               ?? wd('lastName'),
-    email:      wd('email'),
-    phone:      wd('phone-number')
+    email:      wd('formField-email')
+              ?? wd('email'),
+    phone:      wd('formField-phoneNumber')
+              ?? wd('phone-number')
               ?? wd('phoneNumber'),
-    linkedin:   wd('linkedInURL')
-              ?? wd('linkedin'),
-    location:   wd('addressSection_city')
+    location:   wd('formField-city')
+              ?? wd('addressSection_city')
               ?? wd('city'),
-    work_auth:  wdSelect('countryDropdown')
-              ?? wdSelect('workAuthorization'),
   }
 }

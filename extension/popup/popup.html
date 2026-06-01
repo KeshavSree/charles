@@ -5,7 +5,7 @@
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
-      width: 260px;
+      width: 420px;
       font-family: system-ui, -apple-system, sans-serif;
       font-size: 13px;
       background: #0d0d1a;
@@ -45,6 +45,26 @@
     }
     #status.ok  { color: #34d399; }
     #status.err { color: #f87171; }
+    #details { margin-top: 12px; }
+    .detail-section { margin-bottom: 10px; }
+    .detail-heading {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: .06em;
+      text-transform: uppercase;
+      margin-bottom: 5px;
+    }
+    .detail-heading.ok  { color: #34d399; }
+    .detail-heading.err { color: #f59e0b; }
+    .chip-list { display: flex; flex-wrap: wrap; gap: 4px; }
+    .chip {
+      font-size: 10px;
+      padding: 2px 7px;
+      border-radius: 3px;
+      line-height: 1.6;
+    }
+    .chip-ok  { background: #052e16; color: #6ee7b7; border: 1px solid #065f46; }
+    .chip-err { background: #1c1400; color: #fcd34d; border: 1px solid #78350f; }
   </style>
 </head>
 <body>
@@ -55,6 +75,7 @@
   </select>
   <button id="fill-btn" disabled>Fill Form</button>
   <div id="status"></div>
+  <div id="details"></div>
   <script src="../dist/popup/popup.js"></script>
 </body>
 </html>

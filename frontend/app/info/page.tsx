@@ -1,41 +1,21 @@
 'use client'
-import { useEffect, useState } from 'react'
-import { UserInfo, fetchInfo, updateInfo } from '@/lib/api'
+import { useEffect, useState, useRef, KeyboardEvent } from 'react'
+import { FIELDS, EMPTY_USER_INFO, UserInfo } from '@/lib/fields'
+import { fetchInfo, updateInfo } from '@/lib/api'
 
-const TEXT_FIELDS: { key: keyof UserInfo; label: string; type?: string }[] = [
-  { key: 'first_name',   label: 'First Name' },
-  { key: 'last_name',    label: 'Last Name' },
-  { key: 'email',        label: 'Email', type: 'email' },
-  { key: 'phone',        label: 'Phone', type: 'tel' },
-  { key: 'linkedin_url', label: 'LinkedIn URL', type: 'url' },
-  { key: 'address',      label: 'Address' },
-  { key: 'city',         label: 'City' },
-  { key: 'state',        label: 'State' },
-  { key: 'zip_code',     label: 'Zip Code' },
-  { key: 'country',      label: 'Country' },
-  { key: 'work_auth',    label: 'Work Authorization' },
-]
+const TEXT_FIELDS = FIELDS
+  .filter((f) => f.type === 'text')
+  .map((f) => ({ key: f.key as keyof UserInfo, label: f.label, type: f.inputType }))
 
-const BOOL_FIELDS: { key: 'work_authorized' | 'requires_sponsorship'; label: string }[] = [
-  { key: 'work_authorized',     label: 'Work Authorized?' },
-  { key: 'requires_sponsorship', label: 'Requires Sponsorship?' },
-]
+const BOOL_FIELDS = FIELDS
+  .filter((f) => f.type === 'bool')
+  .map((f) => ({ key: f.key as keyof UserInfo, label: f.label }))
 
-const STRING_APP_FIELDS: { key: 'gender' | 'ethnicity' | 'veteran_status' | 'disability_status'; label: string }[] = [
-  { key: 'gender',           label: 'Gender' },
-  { key: 'ethnicity',        label: 'Race / Ethnicity' },
-  { key: 'veteran_status',   label: 'Veteran Status' },
-  { key: 'disability_status', label: 'Disability Status' },
-]
+const STRING_APP_FIELDS = FIELDS
+  .filter((f) => f.type === 'string-enum')
+  .map((f) => ({ key: f.key as keyof UserInfo, label: f.label }))
 
-const EMPTY: UserInfo = {
-  first_name: '', last_name: '', email: '',
-  phone: null, linkedin_url: null,
-  address: null, city: null, state: null, zip_code: null, country: null,
-  work_auth: null,
-  work_authorized: null, requires_sponsorship: null,
-  gender: null, ethnicity: null, veteran_status: null, disability_status: null,
-}
+const EMPTY = EMPTY_USER_INFO
 
 function BoolPicker({
   value,
@@ -91,6 +71,63 @@ const inputStyle: React.CSSProperties = {
   boxSizing: 'border-box',
 }
 
+function SkillsInput({ skills, onChange, disabled }: { skills: string[]; onChange: (s: string[]) => void; disabled?: boolean }) {
+  const [draft, setDraft] = useState('')
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  function add() {
+    const s = draft.trim()
+    if (s && !skills.includes(s)) onChange([...skills, s])
+    setDraft('')
+  }
+
+  function onKey(e: KeyboardEvent<HTMLInputElement>) {
+    if (e.key === 'Enter') { e.preventDefault(); add() }
+    if (e.key === 'Backspace' && draft === '' && skills.length) {
+      onChange(skills.slice(0, -1))
+    }
+  }
+
+  return (
+    <div
+      onClick={() => inputRef.current?.focus()}
+      style={{
+        display: 'flex', flexWrap: 'wrap', gap: '6px', alignItems: 'center',
+        minHeight: '36px', padding: '4px 8px',
+        background: 'var(--surface-2)', border: '1px solid var(--border)',
+        borderRadius: '4px', cursor: 'text',
+      }}
+    >
+      {skills.map((s) => (
+        <span key={s} style={{
+          display: 'inline-flex', alignItems: 'center', gap: '4px',
+          background: 'var(--accent)', color: '#fff',
+          fontSize: '11px', padding: '2px 8px', borderRadius: '99px',
+        }}>
+          {s}
+          {!disabled && (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onChange(skills.filter((x) => x !== s)) }}
+              style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', padding: 0, fontSize: '12px', lineHeight: 1 }}
+            >×</button>
+          )}
+        </span>
+      ))}
+      <input
+        ref={inputRef}
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onKeyDown={onKey}
+        onBlur={add}
+        disabled={disabled}
+        placeholder={skills.length === 0 ? 'Type a skill, press Enter' : ''}
+        style={{ flex: '1 1 120px', minWidth: '80px', background: 'none', border: 'none', outline: 'none', color: 'var(--text)', fontSize: '12px', padding: '2px 0' }}
+      />
+    </div>
+  )
+}
+
 export default function InfoPage() {
   const [info, setInfo] = useState<UserInfo>(EMPTY)
   const [status, setStatus] = useState<'loading' | 'idle' | 'saving' | 'saved' | 'error'>('loading')
@@ -104,10 +141,10 @@ export default function InfoPage() {
   const setText = (key: keyof UserInfo) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setInfo((prev) => ({ ...prev, [key]: e.target.value || null }))
 
-  const setBool = (key: 'work_authorized' | 'requires_sponsorship') => (v: boolean | null) =>
+  const setBool = (key: keyof UserInfo) => (v: boolean | null) =>
     setInfo((prev) => ({ ...prev, [key]: v }))
 
-  const setStr = (key: 'gender' | 'ethnicity' | 'veteran_status' | 'disability_status') =>
+  const setStr = (key: keyof UserInfo) =>
     (e: React.ChangeEvent<HTMLInputElement>) =>
       setInfo((prev) => ({ ...prev, [key]: e.target.value || null }))
 
@@ -163,7 +200,7 @@ export default function InfoPage() {
             {label}
           </label>
           <BoolPicker
-            value={info[key]}
+            value={info[key] as boolean | null}
             onChange={setBool(key)}
             disabled={loading}
           />
@@ -177,13 +214,26 @@ export default function InfoPage() {
           </label>
           <input
             type="text"
-            value={info[key] ?? ''}
+            value={(info[key] as string | null) ?? ''}
             onChange={setStr(key)}
             disabled={loading}
             style={inputStyle}
           />
         </div>
       ))}
+
+      <div style={{ marginTop: '28px', marginBottom: '16px', paddingTop: '20px', borderTop: '1px solid var(--border)' }}>
+        <h2 style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', letterSpacing: '.06em', margin: 0 }}>
+          SKILLS
+        </h2>
+      </div>
+      <div style={{ marginBottom: '14px' }}>
+        <SkillsInput
+          skills={info.skills ?? []}
+          onChange={(s) => setInfo((prev) => ({ ...prev, skills: s }))}
+          disabled={loading}
+        />
+      </div>
 
       <div style={{ marginTop: '20px', display: 'flex', alignItems: 'center', gap: '12px' }}>
         <button

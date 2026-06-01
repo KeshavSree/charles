@@ -240,27 +240,16 @@ async def get_or_create_info(session: AsyncSession) -> UserInfo:
     return row
 
 
+_INFO_SKIP = frozenset({'id', 'updated_at', 'work_auth'})
+
+
 async def save_info(session: AsyncSession, data: UserInfo) -> UserInfo:
     existing = await session.get(UserInfo, _INFO_ID)
     now = datetime.now(tz=timezone.utc)
     if existing:
-        existing.first_name = data.first_name
-        existing.last_name = data.last_name
-        existing.email = data.email
-        existing.phone = data.phone
-        existing.linkedin_url = data.linkedin_url
-        existing.address = data.address
-        existing.city = data.city
-        existing.state = data.state
-        existing.zip_code = data.zip_code
-        existing.country = data.country
-        existing.work_auth = data.work_auth
-        existing.work_authorized = data.work_authorized
-        existing.requires_sponsorship = data.requires_sponsorship
-        existing.gender = data.gender
-        existing.ethnicity = data.ethnicity
-        existing.veteran_status = data.veteran_status
-        existing.disability_status = data.disability_status
+        for attr in UserInfo.__mapper__.column_attrs:
+            if attr.key not in _INFO_SKIP:
+                setattr(existing, attr.key, getattr(data, attr.key, None))
         existing.updated_at = now
     else:
         data.id = _INFO_ID

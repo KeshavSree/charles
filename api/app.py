@@ -7,8 +7,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from storage.db import create_tables
-from api.routers import jobs, resumes, scraper
-from api.routers import profiles
+from api.routers import jobs, resumes, scraper, profiles, info
 
 
 @asynccontextmanager
@@ -30,3 +29,4 @@ app.include_router(jobs.router, prefix="/api")
 app.include_router(resumes.router, prefix="/api")
 app.include_router(scraper.router, prefix="/api")
 app.include_router(profiles.router, prefix="/api")
+app.include_router(info.router, prefix="/api")

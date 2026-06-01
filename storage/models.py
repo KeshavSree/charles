@@ -4,7 +4,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import String, Text, DateTime, Integer, ForeignKey, Boolean
+from sqlalchemy import String, Text, DateTime, Integer, ForeignKey, Boolean, JSON
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -83,6 +83,7 @@ class ProfileExperience(Base):
     )
     company: Mapped[str] = mapped_column(String(256), nullable=False, default="")
     title: Mapped[str] = mapped_column(String(256), nullable=False, default="")
+    location: Mapped[Optional[str]] = mapped_column(String(256), nullable=True)
     start_date: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
     end_date: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
     is_current: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
@@ -126,4 +127,5 @@ class UserInfo(Base):
     ethnicity: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
     veteran_status: Mapped[Optional[str]] = mapped_column(String(256), nullable=True)
     disability_status: Mapped[Optional[str]] = mapped_column(String(256), nullable=True)
+    skills: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
