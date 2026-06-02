@@ -44,6 +44,7 @@ function mergeForFill(info: UserInfo, profile: ResumeProfile | null): UserInfo {
     }
   }
   result.skills = info.skills ?? []
+  result.websites = info.websites ?? []
   return result as unknown as UserInfo
 }
 
@@ -73,9 +74,10 @@ function buildFillRequest(info: UserInfo, profile: ResumeProfile | null): FillRe
     ? [...profile.education].sort((a, b) => a.display_order - b.display_order)
     : []
   const skills = (merged.skills ?? []).filter(Boolean)
+  const websites = (merged.websites ?? []).filter(Boolean)
 
   // resume is attached asynchronously by the click handler (needs the PDF bytes).
-  return { values, experience, education, skills, resume: null }
+  return { values, experience, education, websites, skills, resume: null }
 }
 
 // Fetch the active resume's PDF and base64-encode it so it can ride along inside the
@@ -109,7 +111,7 @@ function setStatus(msg: string, type: 'ok' | 'err' | '' = '') {
   el.className = type
 }
 
-function showDetails(filledFields: string[], skippedFields: string[]) {
+function showDetails(filledFields: string[], skippedFields: string[], doubleCheckFields: string[]) {
   const el = document.getElementById('details')!
   el.innerHTML = ''
 
@@ -133,7 +135,8 @@ function showDetails(filledFields: string[], skippedFields: string[]) {
   }
 
   if (filledFields.length) renderSection(`✓ Filled (${filledFields.length})`, 'ok', filledFields, 'chip-ok')
-  if (skippedFields.length) renderSection(`✗ Skipped (${skippedFields.length})`, 'err', skippedFields, 'chip-err')
+  if (skippedFields.length) renderSection(`✗ Not filled (${skippedFields.length})`, 'err', skippedFields, 'chip-err')
+  if (doubleCheckFields.length) renderSection(`⚠ Double-check (${doubleCheckFields.length})`, 'warn', doubleCheckFields, 'chip-warn')
 }
 
 async function init() {
@@ -205,7 +208,7 @@ async function init() {
         `Filled ${summary.filled} field(s)${summary.skipped ? `, skipped ${summary.skipped}` : ''}`,
         summary.filled > 0 ? 'ok' : 'err',
       )
-      showDetails(summary.filledFields, summary.skippedFields)
+      showDetails(summary.filledFields, summary.skippedFields, summary.doubleCheckFields)
     } catch (err) {
       setStatus(err instanceof Error ? err.message : String(err), 'err')
     }

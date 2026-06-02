@@ -7,9 +7,14 @@ const TEXT_FIELDS = FIELDS
   .filter((f) => f.type === 'text')
   .map((f) => ({ key: f.key as keyof UserInfo, label: f.label, type: f.inputType }))
 
+// Personal = non-link text fields (name, email, phone, address…). Links = url-typed.
+const PERSONAL_FIELDS = TEXT_FIELDS.filter((f) => f.type !== 'url')
+const LINK_FIELDS = TEXT_FIELDS.filter((f) => f.type === 'url')
+
+// doubleCheck fields show "(Default)" — the extension fills them with a best-guess default.
 const BOOL_FIELDS = FIELDS
   .filter((f) => f.type === 'bool')
-  .map((f) => ({ key: f.key as keyof UserInfo, label: f.label }))
+  .map((f) => ({ key: f.key as keyof UserInfo, label: f.doubleCheck ? `${f.label} (Default)` : f.label }))
 
 const STRING_APP_FIELDS = FIELDS
   .filter((f) => f.type === 'string-enum')
@@ -71,20 +76,51 @@ const inputStyle: React.CSSProperties = {
   boxSizing: 'border-box',
 }
 
-function SkillsInput({ skills, onChange, disabled }: { skills: string[]; onChange: (s: string[]) => void; disabled?: boolean }) {
+const labelStyle: React.CSSProperties = {
+  display: 'block',
+  fontSize: '11px',
+  color: 'var(--text-muted)',
+  marginBottom: '4px',
+}
+
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <section style={{ marginBottom: '28px' }}>
+      <h2 style={{
+        color: 'var(--gold)', fontSize: '12px', fontWeight: 700, letterSpacing: '.08em',
+        margin: '0 0 14px', paddingBottom: '8px', borderBottom: '1px solid var(--border)',
+      }}>
+        {title}
+      </h2>
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))',
+        gap: '14px 20px',
+        alignItems: 'start',
+      }}>
+        {children}
+      </div>
+    </section>
+  )
+}
+
+// A field cell spanning the full row (for chip inputs that need horizontal room).
+const fullRow: React.CSSProperties = { gridColumn: '1 / -1' }
+
+function ChipInput({ items, onChange, disabled, placeholder }: { items: string[]; onChange: (s: string[]) => void; disabled?: boolean; placeholder?: string }) {
   const [draft, setDraft] = useState('')
   const inputRef = useRef<HTMLInputElement>(null)
 
   function add() {
     const s = draft.trim()
-    if (s && !skills.includes(s)) onChange([...skills, s])
+    if (s && !items.includes(s)) onChange([...items, s])
     setDraft('')
   }
 
   function onKey(e: KeyboardEvent<HTMLInputElement>) {
     if (e.key === 'Enter') { e.preventDefault(); add() }
-    if (e.key === 'Backspace' && draft === '' && skills.length) {
-      onChange(skills.slice(0, -1))
+    if (e.key === 'Backspace' && draft === '' && items.length) {
+      onChange(items.slice(0, -1))
     }
   }
 
@@ -98,7 +134,7 @@ function SkillsInput({ skills, onChange, disabled }: { skills: string[]; onChang
         borderRadius: '4px', cursor: 'text',
       }}
     >
-      {skills.map((s) => (
+      {items.map((s) => (
         <span key={s} style={{
           display: 'inline-flex', alignItems: 'center', gap: '4px',
           background: 'var(--accent)', color: '#fff',
@@ -108,7 +144,7 @@ function SkillsInput({ skills, onChange, disabled }: { skills: string[]; onChang
           {!disabled && (
             <button
               type="button"
-              onClick={(e) => { e.stopPropagation(); onChange(skills.filter((x) => x !== s)) }}
+              onClick={(e) => { e.stopPropagation(); onChange(items.filter((x) => x !== s)) }}
               style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', padding: 0, fontSize: '12px', lineHeight: 1 }}
             >×</button>
           )}
@@ -121,7 +157,7 @@ function SkillsInput({ skills, onChange, disabled }: { skills: string[]; onChang
         onKeyDown={onKey}
         onBlur={add}
         disabled={disabled}
-        placeholder={skills.length === 0 ? 'Type a skill, press Enter' : ''}
+        placeholder={items.length === 0 ? (placeholder ?? '') : ''}
         style={{ flex: '1 1 120px', minWidth: '80px', background: 'none', border: 'none', outline: 'none', color: 'var(--text)', fontSize: '12px', padding: '2px 0' }}
       />
     </div>
@@ -162,78 +198,81 @@ export default function InfoPage() {
 
   const loading = status === 'loading'
 
+  // One text field cell (grid gap handles spacing).
+  const textField = ({ key, label, type }: { key: keyof UserInfo; label: string; type?: string }) => (
+    <div key={key}>
+      <label style={labelStyle}>{label}</label>
+      <input
+        type={type ?? 'text'}
+        value={(info[key] as string | null) ?? ''}
+        onChange={setText(key)}
+        disabled={loading}
+        style={inputStyle}
+      />
+    </div>
+  )
+
   return (
-    <div style={{ padding: '32px', maxWidth: '480px' }}>
+    <div style={{ padding: '32px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '24px' }}>
-        <h1 style={{ color: 'var(--gold)', fontSize: '13px', fontWeight: 700, letterSpacing: '.08em', margin: 0 }}>
-          INFO
+        <h1 style={{ color: 'var(--text)', fontSize: '15px', fontWeight: 700, letterSpacing: '.04em', margin: 0 }}>
+          Info
         </h1>
         <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
           Used by the extension to fill application forms
         </span>
       </div>
 
-      {TEXT_FIELDS.map(({ key, label, type }) => (
-        <div key={key} style={{ marginBottom: '14px' }}>
-          <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-muted)', marginBottom: '4px' }}>
-            {label}
-          </label>
-          <input
-            type={type ?? 'text'}
-            value={info[key] as string ?? ''}
-            onChange={setText(key)}
+      <Section title="PERSONAL INFO">
+        {PERSONAL_FIELDS.map(textField)}
+      </Section>
+
+      <Section title="LINKS & SKILLS">
+        {LINK_FIELDS.map(textField)}
+        <div style={fullRow}>
+          <label style={labelStyle}>Websites</label>
+          <ChipInput
+            items={info.websites ?? []}
+            onChange={(s) => setInfo((prev) => ({ ...prev, websites: s }))}
             disabled={loading}
-            style={inputStyle}
+            placeholder="Add a URL, press Enter"
           />
         </div>
-      ))}
-
-      <div style={{ marginTop: '28px', marginBottom: '16px', paddingTop: '20px', borderTop: '1px solid var(--border)' }}>
-        <h2 style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', letterSpacing: '.06em', margin: 0 }}>
-          APPLICATION QUESTIONS
-        </h2>
-      </div>
-
-      {BOOL_FIELDS.map(({ key, label }) => (
-        <div key={key} style={{ marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '16px' }}>
-          <label style={{ fontSize: '12px', color: 'var(--text-muted)', minWidth: '180px' }}>
-            {label}
-          </label>
-          <BoolPicker
-            value={info[key] as boolean | null}
-            onChange={setBool(key)}
+        <div style={fullRow}>
+          <label style={labelStyle}>Skills</label>
+          <ChipInput
+            items={info.skills ?? []}
+            onChange={(s) => setInfo((prev) => ({ ...prev, skills: s }))}
             disabled={loading}
+            placeholder="Type a skill, press Enter"
           />
         </div>
-      ))}
+      </Section>
 
-      {STRING_APP_FIELDS.map(({ key, label }) => (
-        <div key={key} style={{ marginBottom: '14px' }}>
-          <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-muted)', marginBottom: '4px' }}>
-            {label}
-          </label>
-          <input
-            type="text"
-            value={(info[key] as string | null) ?? ''}
-            onChange={setStr(key)}
-            disabled={loading}
-            style={inputStyle}
-          />
-        </div>
-      ))}
-
-      <div style={{ marginTop: '28px', marginBottom: '16px', paddingTop: '20px', borderTop: '1px solid var(--border)' }}>
-        <h2 style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', letterSpacing: '.06em', margin: 0 }}>
-          SKILLS
-        </h2>
-      </div>
-      <div style={{ marginBottom: '14px' }}>
-        <SkillsInput
-          skills={info.skills ?? []}
-          onChange={(s) => setInfo((prev) => ({ ...prev, skills: s }))}
-          disabled={loading}
-        />
-      </div>
+      <Section title="COMMON APPLICATION QUESTIONS">
+        {BOOL_FIELDS.map(({ key, label }) => (
+          <div key={key}>
+            <label style={labelStyle}>{label}</label>
+            <BoolPicker
+              value={info[key] as boolean | null}
+              onChange={setBool(key)}
+              disabled={loading}
+            />
+          </div>
+        ))}
+        {STRING_APP_FIELDS.map(({ key, label }) => (
+          <div key={key}>
+            <label style={labelStyle}>{label}</label>
+            <input
+              type="text"
+              value={(info[key] as string | null) ?? ''}
+              onChange={setStr(key)}
+              disabled={loading}
+              style={inputStyle}
+            />
+          </div>
+        ))}
+      </Section>
 
       <div style={{ marginTop: '20px', display: 'flex', alignItems: 'center', gap: '12px' }}>
         <button
