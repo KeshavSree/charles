@@ -18,7 +18,7 @@ const BOOL_FIELDS = FIELDS
 
 const STRING_APP_FIELDS = FIELDS
   .filter((f) => f.type === 'string-enum')
-  .map((f) => ({ key: f.key as keyof UserInfo, label: f.label }))
+  .map((f) => ({ key: f.key as keyof UserInfo, label: f.label, options: f.options }))
 
 const EMPTY = EMPTY_USER_INFO
 
@@ -181,7 +181,7 @@ export default function InfoPage() {
     setInfo((prev) => ({ ...prev, [key]: v }))
 
   const setStr = (key: keyof UserInfo) =>
-    (e: React.ChangeEvent<HTMLInputElement>) =>
+    (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
       setInfo((prev) => ({ ...prev, [key]: e.target.value || null }))
 
   async function handleSave() {
@@ -260,16 +260,30 @@ export default function InfoPage() {
             />
           </div>
         ))}
-        {STRING_APP_FIELDS.map(({ key, label }) => (
+        {STRING_APP_FIELDS.map(({ key, label, options }) => (
           <div key={key}>
             <label style={labelStyle}>{label}</label>
-            <input
-              type="text"
-              value={(info[key] as string | null) ?? ''}
-              onChange={setStr(key)}
-              disabled={loading}
-              style={inputStyle}
-            />
+            {options ? (
+              <select
+                value={(info[key] as string | null) ?? ''}
+                onChange={setStr(key)}
+                disabled={loading}
+                style={inputStyle}
+              >
+                <option value="">—</option>
+                {options.map((o) => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </select>
+            ) : (
+              <input
+                type="text"
+                value={(info[key] as string | null) ?? ''}
+                onChange={setStr(key)}
+                disabled={loading}
+                style={inputStyle}
+              />
+            )}
           </div>
         ))}
       </Section>

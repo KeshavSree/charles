@@ -111,9 +111,20 @@ function setStatus(msg: string, type: 'ok' | 'err' | '' = '') {
   el.className = type
 }
 
-function showDetails(filledFields: string[], skippedFields: string[], doubleCheckFields: string[]) {
+function showDetails(filledFields: string[], skippedFields: string[], doubleCheckFields: string[], needsYou: string[], didntLand: string[]) {
   const el = document.getElementById('details')!
   el.innerHTML = ''
+
+  // Post-fill review summary — the per-field detail lives as outlines on the page.
+  if (needsYou.length || didntLand.length) {
+    const summary = document.createElement('div')
+    const parts: string[] = []
+    if (needsYou.length) parts.push(`🔴 ${needsYou.length} need you`)
+    if (didntLand.length) parts.push(`🟠 ${didntLand.length} didn’t land`)
+    summary.textContent = `On the form: ${parts.join(' · ')} — outlined in the tab`
+    summary.style.cssText = 'font-size:11px; color:#e2e8f0; margin-bottom:10px; padding:6px 8px; background:#1a1a2e; border:1px solid #2d2d4e; border-radius:4px;'
+    el.appendChild(summary)
+  }
 
   function renderSection(heading: string, cls: string, fields: string[], chipCls: string) {
     const section = document.createElement('div')
@@ -208,7 +219,7 @@ async function init() {
         `Filled ${summary.filled} field(s)${summary.skipped ? `, skipped ${summary.skipped}` : ''}`,
         summary.filled > 0 ? 'ok' : 'err',
       )
-      showDetails(summary.filledFields, summary.skippedFields, summary.doubleCheckFields)
+      showDetails(summary.filledFields, summary.skippedFields, summary.doubleCheckFields, summary.needsYou, summary.didntLand)
     } catch (err) {
       setStatus(err instanceof Error ? err.message : String(err), 'err')
     }
