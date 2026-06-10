@@ -5,16 +5,18 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Commands
 
 ```bash
-# Run the scraper daemon (initial scrape + scheduled interval)
-python main.py
+# Backend API
+uvicorn api.app:app --reload
 
-# Run all tests
+# Frontend
+cd frontend && npm run dev
+
+# Extension (watch mode is always running — don't run build manually)
+cd extension && npm run typecheck   # validate types
+
+# Tests, somewhat of an afterthought rn
 pytest
-
-# Run a single test file
 pytest tests/test_ashby.py
-
-# Run a single test by name
 pytest tests/test_ashby.py::test_scrape_returns_postings
 ```
 
@@ -30,33 +32,54 @@ Copy `.env.example` to `.env`. All settings are optional — SQLite (`jobs.db`) 
 
 ## Architecture
 
-### Data flow
+### Backend (Python / FastAPI)
 
-`main.py` → `scheduler.py` → `scrapers/` → `storage/repository.py` → `jobs.db`
+`api/app.py` mounts five routers under `/api`:
 
-1. `main.py` creates tables then hands off to `start_scheduler()`.
-2. `scheduler.py` runs `run_all_scrapers()` immediately, then on the configured interval. It reads `companies.yaml` to determine what to scrape, instantiates the appropriate scraper via `get_scraper()`, and calls `upsert_jobs()` with the results.
-3. Each scraper fetches from its ATS's public API and returns a list of `JobPosting` (Pydantic model defined in `scrapers/base.py`).
-4. `repository.upsert_jobs()` deduplicates by `SHA256(url)[:16]` and persists to SQLite or PostgreSQL using dialect-specific `INSERT … ON CONFLICT DO UPDATE`.
+- `jobs` — query scraped job listings
+- `resumes` — upload PDF resumes; stored in `uploads/`
+- `profiles` — parsed profile derived from a resume (experience, education, contact)
+- `info` — singleton `UserInfo` record (all personal/EEO/contact fields a job form might ask)
+- `scraper` — trigger a manual scrape run
 
-### Scraper registry
-
-Scrapers self-register at import time via the `@register("source_name")` decorator (`scrapers/registry.py`). `scheduler.py` imports all scraper modules explicitly to trigger registration before calling `get_scraper()`. Adding a new ATS scraper requires:
-
-1. Create `scrapers/<ats>.py` with a class decorated `@register("<ats>")` that extends `BaseScraper` and implements `async def scrape(self, company: str) -> list[JobPosting]`.
-2. Import the new module in `scheduler.py` (alongside the existing imports).
-3. Add entries under the new source key in `companies.yaml`.
+`api/schemas.py` is the single source of truth for `UserInfo` fields. `storage/models.py` mirrors it as a SQLAlchemy model. Adding a field means one line in each.
 
 ### Storage
 
-- `storage/models.py` — SQLAlchemy `Job` ORM model. Primary key is `SHA256(url)[:16]`.
-- `storage/db.py` — module-level async engine + session factory; `create_tables()` is idempotent.
-- `storage/repository.py` — `upsert_jobs()` and `query_jobs()`. Dialect is detected at runtime so the same code works for both SQLite (dev) and PostgreSQL (prod).
+- `storage/models.py` — ORM models: `Job`, `Resume`, `ResumeSection`, `Profile`, `ProfileExperience`, `ProfileEducation`, `UserInfo`
+- `storage/db.py` — async engine + session factory; `create_tables()` is idempotent
+- `storage/repository.py` — `upsert_jobs()`, `query_jobs()`, `generate_profile_from_resume()`. Dialect detected at runtime for SQLite/PostgreSQL compatibility
 
-### Configuration
+### Scraper
 
-`config.py` uses `pydantic-settings`; values are read from `.env` (if present) and can be overridden by environment variables.
+`scrapers/` — Greenhouse, Lever, Ashby scrapers. Each self-registers via `@register("source_name")` in `scrapers/registry.py`. Adding a new ATS:
+
+1. Create `scrapers/<ats>.py` extending `BaseScraper`, implement `async def scrape(self, company: str) -> list[JobPosting]`
+2. Import it in `scheduler.py`
+3. Add entries under the new source key in `companies.yaml`
+
+### Resume parser
+
+`parser/` — PDF → structured sections → `Profile`. Modules: `pdf.py` (extract text), `sections.py` (split into contact/experience/education), `contact.py`, `experience.py`, `education.py`.
+
+### Frontend (Next.js)
+
+`frontend/app/` pages: `/jobs`, `/resumes`, `/info`. Shares `frontend/lib/fields.ts` with the extension — the canonical list of fillable fields and their metadata.
+
+### Chrome extension
+
+`extension/` — TypeScript, built with esbuild. Entry points: `popup/popup.ts`, `content/engine/`.
+
+The autofill engine uses a detector/strategy pattern:
+
+- **Detectors** (`content/engine/detectors/`) — scan the DOM and return `DetectedField[]`, each tagged with a semantic `role` (a `fields.ts` key) and `widget` type. Currently one detector: `WorkdayDetector`.
+- **Strategies** (`content/engine/strategies/`) — one per widget type; know how to fill that widget. Keyed by `WidgetType` in a `Map`.
+- **Dispatcher** (`content/engine/dispatcher.ts`) — detect → order by strategy priority → fill → collect results → post-fill review pass.
+
+Adding a new ATS: add a detector in `detectors/`, register it in `detectors/index.ts`. Adding a new widget type: add a strategy in `strategies/`, register it in `strategies/index.ts`, add the type to `WidgetType` in `types.ts`.
+
+`frontend/lib/fields.ts` is imported by both the extension and the frontend — edit it carefully, it affects both.
 
 ### Testing
 
-Tests use `pytest-asyncio` (`asyncio_mode = auto`) and `pytest-httpx` for mocking HTTP calls. The `db_session` fixture in `conftest.py` spins up an in-memory SQLite database per test.
+`pytest-asyncio` (`asyncio_mode = auto`) + `pytest-httpx` for mocking HTTP. The `db_session` fixture in `conftest.py` spins up an in-memory SQLite database per test.
