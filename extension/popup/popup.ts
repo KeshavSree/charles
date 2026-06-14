@@ -120,7 +120,7 @@ function showDetails(filledFields: string[], skippedFields: string[], doubleChec
     const summary = document.createElement('div')
     const parts: string[] = []
     if (needsYou.length) parts.push(`🔴 ${needsYou.length} need you`)
-    if (didntLand.length) parts.push(`🟠 ${didntLand.length} didn’t land`)
+    if (didntLand.length) parts.push(`🟠 ${didntLand.length} didn't land`)
     summary.textContent = `On the form: ${parts.join(' · ')} — outlined in the tab`
     summary.style.cssText = 'font-size:11px; color:#e2e8f0; margin-bottom:10px; padding:6px 8px; background:#1a1a2e; border:1px solid #2d2d4e; border-radius:4px;'
     el.appendChild(summary)
@@ -180,7 +180,12 @@ async function init() {
     if (!resumeId) return
 
     fillBtn.disabled = true
-    setStatus('Filling…')
+    setStatus('loading...')
+
+    const progressListener = (msg: { type: string; msg: string }) => {
+      if (msg.type === 'charles:progress') setStatus(msg.msg)
+    }
+    chrome.runtime.onMessage.addListener(progressListener)
 
     try {
       const [infoRes, profileRes] = await Promise.all([
@@ -222,6 +227,8 @@ async function init() {
       showDetails(summary.filledFields, summary.skippedFields, summary.doubleCheckFields, summary.needsYou, summary.didntLand)
     } catch (err) {
       setStatus(err instanceof Error ? err.message : String(err), 'err')
+    } finally {
+      chrome.runtime.onMessage.removeListener(progressListener)
     }
 
     fillBtn.disabled = false
