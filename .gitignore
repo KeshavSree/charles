@@ -15,3 +15,6 @@ frontend/out/
 
 # Brainstorm
 .superpowers/
+
+# python virtual environment
+env/
