@@ -3,6 +3,8 @@
 // because setting .value directly breaks their async search.
 
 import { wait, log, trunc } from '../../dom'
+import { matchOption } from '../helpers/optionMatch'
+import { openDropdown, collectWorkdayOptions, dismissDropdown } from '../helpers/workdayDropdown'
 import type { FillStrategy } from '../../types'
 
 export const comboboxStrategy: FillStrategy = {
@@ -16,28 +18,14 @@ export const comboboxStrategy: FillStrategy = {
     log(`${field.role} detected (combobox)`)
     const container = field.handle
 
-    // Trigger: prefer selectWidget, fall back to first button in the container.
-    const trigger =
-      container.querySelector<HTMLElement>('[data-automation-id="selectWidget"]') ??
-      container.querySelector<HTMLElement>('button')
-    if (!trigger) {
+    let options = await openDropdown(container)
+    if (options === null) {
       log(`${field.role} skipped — no dropdown trigger`)
       return [{ role: field.role, status: 'skipped', detail: 'no trigger' }]
     }
 
-    trigger.click()
-    await wait(400)
-
-    // Options vary by Workday form version — try selectors in specificity order.
-    let options = Array.from(document.querySelectorAll<HTMLElement>('li[role="option"]'))
-    if (options.length === 0) {
-      options = Array.from(document.querySelectorAll<HTMLElement>('[data-automation-id="promptOption"]'))
-    }
-    if (options.length === 0) {
-      options = Array.from(document.querySelectorAll<HTMLElement>('[role="option"]')).filter((el) => !el.getAttribute('data-automation-id'))
-    }
-
-    // If nothing rendered, try typing into the search input to trigger filtering.
+    // If nothing rendered, try typing into the search input to trigger filtering, then
+    // re-read the (now async-loaded) options.
     if (options.length === 0) {
       const searchInput =
         container.querySelector<HTMLInputElement>('input') ??
@@ -47,17 +35,11 @@ export const comboboxStrategy: FillStrategy = {
         setter?.call(searchInput, value)
         searchInput.dispatchEvent(new Event('input', { bubbles: true }))
         await wait(500)
-        options = Array.from(document.querySelectorAll<HTMLElement>('[data-automation-id="promptOption"]'))
-        if (options.length === 0) options = Array.from(document.querySelectorAll<HTMLElement>('[role="option"]'))
+        options = collectWorkdayOptions()
       }
     }
 
-    const val = value.toLowerCase()
-    const match =
-      options.find((o) => (o.textContent ?? '').trim().toLowerCase() === val) ??
-      options.find((o) => (o.textContent ?? '').trim().toLowerCase().startsWith(val)) ??
-      options.find((o) => val.startsWith((o.textContent ?? '').trim().toLowerCase().replace(/\s+/g, ' ')))
-
+    const match = matchOption(value, options, (o) => o.textContent ?? '')
     if (match) {
       match.click()
       await wait(100)
@@ -65,7 +47,7 @@ export const comboboxStrategy: FillStrategy = {
       return [{ role: field.role, status: 'filled' }]
     }
 
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }))
+    dismissDropdown()
     log(`${field.role} skipped — no option matched "${value}" (${options.length} options)`)
     return [{ role: field.role, status: 'failed', detail: 'no option' }]
   },

@@ -1,17 +1,11 @@
 // Radio groups. Bool values match Yes/No; enum values match the option label exactly.
 
 import { log } from '../dom'
+import { controlLabel } from './helpers/controlLabel'
 import type { FillStrategy } from '../types'
 
-function getRadioLabel(radio: HTMLInputElement): string {
-  if (radio.id) {
-    const lbl = document.querySelector(`label[for="${CSS.escape(radio.id)}"]`)
-    if (lbl?.textContent) return lbl.textContent.toLowerCase().trim()
-  }
-  const parent = radio.closest('label')
-  if (parent?.textContent) return parent.textContent.toLowerCase().trim()
-  return (radio.value ?? '').toLowerCase()
-}
+const getRadioLabel = (radio: HTMLInputElement): string =>
+  controlLabel(radio, { fallbackValue: true }).toLowerCase()
 
 function matchesBoolValue(labelOrVal: string, storedTrue: boolean): boolean {
   if (storedTrue) return /\byes\b|\b1\b|\btrue\b/.test(labelOrVal)

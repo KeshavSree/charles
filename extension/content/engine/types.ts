@@ -16,6 +16,8 @@ export type WidgetType =
   | 'wd-multiselect'
   | 'wd-section'
   | 'wd-date'
+  | 'gh-react-select'
+  | 'gh-education-section'
   | 'file-upload'
 
 export interface DetectedField {
@@ -54,6 +56,7 @@ export interface EducationEntry {
   major: string | null
   gpa: string | null
   grad_year: string | null
+  grad_month: string | null
   display_order: number
 }
 
@@ -66,6 +69,10 @@ export interface FillRequest {
   websites: string[]
   skills: string[]
   resume: { base64: string; filename: string } | null
+  /** "Aggressive fill" toggle — gates aggressive-marked roles (privacy_ack, worked_here). */
+  aggressive: boolean
+  /** Companies the user has worked at — used to derive "have you worked at X?" answers. */
+  workedCompanies: string[]
 }
 
 export interface FillContext {

@@ -3,22 +3,9 @@
 // checkbox's label; clicking the match selects it (Workday clears the others).
 
 import { log, trunc } from '../../dom'
+import { controlLabel } from '../helpers/controlLabel'
+import { matchOption } from '../helpers/optionMatch'
 import type { FillStrategy } from '../../types'
-
-function labelOf(cb: HTMLInputElement): string {
-  if (cb.id) {
-    const l = document.querySelector(`label[for="${CSS.escape(cb.id)}"]`)
-    if (l?.textContent) return l.textContent.trim()
-  }
-  const parent = cb.closest('label')
-  if (parent?.textContent) return parent.textContent.trim()
-  const lb = cb.getAttribute('aria-labelledby')
-  if (lb) {
-    const e = document.getElementById(lb)
-    if (e?.textContent) return e.textContent.trim()
-  }
-  return cb.getAttribute('aria-label') ?? ''
-}
 
 export const checkboxGroupStrategy: FillStrategy = {
   widget: 'wd-checkbox-group',
@@ -30,12 +17,8 @@ export const checkboxGroupStrategy: FillStrategy = {
     }
     log(`${field.role} detected (checkbox group)`)
 
-    const val = value.toLowerCase()
     const boxes = Array.from(field.handle.querySelectorAll<HTMLInputElement>('input[type="checkbox"]'))
-    const target = boxes.find((cb) => {
-      const t = labelOf(cb).toLowerCase()
-      return t === val || t.startsWith(val)
-    })
+    const target = matchOption(value, boxes, (cb) => controlLabel(cb))
 
     if (!target) {
       log(`${field.role} skipped — no option matched "${value}"`)
@@ -45,7 +28,7 @@ export const checkboxGroupStrategy: FillStrategy = {
       target.click()
       target.dispatchEvent(new Event('change', { bubbles: true }))
     }
-    log(`${field.role} filled ✓ = "${trunc(labelOf(target))}"`)
+    log(`${field.role} filled ✓ = "${trunc(controlLabel(target))}"`)
     return [{ role: field.role, status: 'filled' }]
   },
 }

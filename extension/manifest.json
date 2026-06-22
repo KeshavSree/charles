@@ -5,7 +5,9 @@
   "description": "Auto-fill job applications from your Charles resume profile",
   "permissions": ["storage", "activeTab", "scripting"],
   "host_permissions": [
-    "http://localhost:8000/*"
+    "http://localhost:8000/*",
+    "https://*.greenhouse.io/*",
+    "https://*.myworkdayjobs.com/*"
   ],
   "background": {
     "service_worker": "dist/background/service-worker.js"

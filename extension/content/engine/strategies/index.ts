@@ -11,6 +11,8 @@ import { comboboxQuestionStrategy } from './workday/comboboxQuestion'
 import { multiselectStrategy } from './workday/multiselect'
 import { sectionStrategy } from './workday/section'
 import { dateStrategy } from './workday/date'
+import { reactSelectStrategy } from './greenhouse/reactSelect'
+import { educationSectionStrategy } from './greenhouse/educationSection'
 
 const ALL: FillStrategy[] = [
   textStrategy,
@@ -21,6 +23,8 @@ const ALL: FillStrategy[] = [
   checkboxGroupStrategy,
   comboboxStrategy,
   comboboxQuestionStrategy,
+  reactSelectStrategy,
+  educationSectionStrategy,
   sectionStrategy,
   multiselectStrategy,
   fileUploadStrategy,

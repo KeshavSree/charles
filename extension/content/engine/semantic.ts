@@ -67,3 +67,98 @@ export function classifyRole(el: Element): string | null {
 export function groupLabelText(el: Element): string {
   return (el.textContent ?? '').toLowerCase()
 }
+
+/**
+ * For a string-enum field, a predicate that matches the on-page option text for the
+ * stored `value`, using that option's `matchRe`. This decouples the stored canonical
+ * value from each ATS's wording (e.g. "No, I do not have a disability" matching
+ * Greenhouse's "No, I don't have a disability"). Returns null when there's no field,
+ * option, or matchRe — callers then fall back to literal text matching.
+ */
+export function enumOptionMatcher(role: string, value: string): ((text: string) => boolean) | null {
+  const field = FIELDS.find((f) => (f.fillKey ?? f.key) === role || f.key === role)
+  const opt = field?.options?.find((o) => o.value === value)
+  if (!opt?.matchRe) return null
+  const re = new RegExp(opt.matchRe, 'i')
+  return (text: string) => re.test(text.trim())
+}
+
+// --- Radio/checkbox group roles (ATS-agnostic) ---
+// Group fields (work_authorized, gender, disability, …) are matched by a label regex
+// rather than per-input semantics. Shared by every detector that recognizes grouped
+// choice questions; built once from the FIELDS registry's groupRe.
+
+export interface GroupField {
+  re: RegExp
+  role: string
+  /** bool fields render as a single checkbox; string-enum fields as a radio/checkbox set. */
+  isBool: boolean
+}
+
+export const GROUP_FIELDS: GroupField[] = FIELDS
+  .filter((f) => f.groupRe)
+  .map((f) => ({ re: new RegExp(f.groupRe as string, 'i'), role: f.key, isBool: f.type === 'bool' }))
+
+/** Roles only filled when the user's aggressive-fill toggle is on (FIELDS `aggressive`). */
+export const AGGRESSIVE_ROLES = new Set(FIELDS.filter((f) => f.aggressive).map((f) => f.fillKey ?? f.key))
+
+/**
+ * Resolve an element's question/label text, lowercased, from the broadest set of sources:
+ * aria-labelledby → aria-label → label[for=id] → wrapping <label> → an ancestor's
+ * label/legend/heading. Greenhouse forms vary in how they attach a question label (some
+ * use aria-labelledby="<id>-label", others a label[for] or a heading above a checkbox
+ * group), so narrow resolution silently misses fields (e.g. #race, the privacy checkbox).
+ * Mirrors the scanner's fullLabel in docs/greenhouse-unfilled.js. Returns '' if nothing.
+ */
+export function fieldLabel(el: Element): string {
+  const lby = el.getAttribute('aria-labelledby')
+  if (lby) {
+    const t = lby.split(/\s+/).map((id) => document.getElementById(id)?.textContent ?? '').join(' ').trim()
+    if (t) return t.toLowerCase()
+  }
+  const aria = el.getAttribute('aria-label')
+  if (aria?.trim()) return aria.trim().toLowerCase()
+  if (el.id) {
+    const lbl = document.querySelector(`label[for="${CSS.escape(el.id)}"]`)
+    if (lbl?.textContent?.trim()) return lbl.textContent.trim().toLowerCase()
+  }
+  const wrap = el.closest('label')
+  if (wrap?.textContent?.trim()) return wrap.textContent.trim().toLowerCase()
+  let node = el.parentElement
+  for (let i = 0; i < 8 && node; i++, node = node.parentElement) {
+    const lab = node.querySelector('label, legend, [class*="label" i]')
+    if (lab && lab !== el && lab.textContent?.trim()) return lab.textContent.trim().toLowerCase()
+  }
+  return ''
+}
+
+/**
+ * A react-select combobox input's question label. Delegates to fieldLabel (the broad
+ * resolver). Shared by the Greenhouse detector (groupRe matching) and the worked-here
+ * derivation (which parses the company out of the label).
+ */
+export function reactSelectLabel(input: Element): string {
+  return fieldLabel(input)
+}
+
+/** Combined group label for a set of radios (legend → role group aria → name). */
+export function getGroupLabel(radios: HTMLInputElement[]): string {
+  for (const r of radios) {
+    const legend = r.closest('fieldset')?.querySelector('legend')
+    if (legend?.textContent) return legend.textContent.toLowerCase()
+  }
+  for (const r of radios) {
+    const container = r.closest('[role="group"],[role="radiogroup"]')
+    if (container) {
+      const labelledBy = container.getAttribute('aria-labelledby')
+      if (labelledBy) {
+        const text = document.getElementById(labelledBy)?.textContent
+        if (text) return text.toLowerCase()
+      }
+      const ariaLabel = container.getAttribute('aria-label')
+      if (ariaLabel) return ariaLabel.toLowerCase()
+    }
+  }
+  if (radios[0]?.name) return radios[0].name.toLowerCase()
+  return ''
+}

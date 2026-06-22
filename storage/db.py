@@ -32,6 +32,8 @@ _MIGRATIONS = [
     "ALTER TABLE user_info ADD COLUMN ethnicity VARCHAR(128)",
     "ALTER TABLE user_info ADD COLUMN veteran_status VARCHAR(256)",
     "ALTER TABLE user_info ADD COLUMN disability_status VARCHAR(256)",
+    "ALTER TABLE user_info ADD COLUMN chosen_name VARCHAR(128)",
+    "ALTER TABLE user_info ADD COLUMN pronouns VARCHAR(64)",
 ]
 
 

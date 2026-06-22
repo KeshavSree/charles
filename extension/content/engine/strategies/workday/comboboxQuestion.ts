@@ -6,20 +6,9 @@
 // "Yes, I would consider relocating for this role"). Enum value → match option text.
 
 import { wait, log, trunc } from '../../dom'
+import { matchOption } from '../helpers/optionMatch'
+import { openDropdown, dismissDropdown } from '../helpers/workdayDropdown'
 import type { FillStrategy } from '../../types'
-
-function matches(value: string | boolean): (text: string) => boolean {
-  if (typeof value === 'boolean') {
-    // ^yes\b / ^no\b so "No, I am not able…" matches but "Not sure" / "I am local…" don't.
-    const re = value ? /^yes\b/i : /^no\b/i
-    return (t) => re.test(t.trim())
-  }
-  const val = value.toLowerCase()
-  return (t) => {
-    const tt = t.trim().toLowerCase()
-    return tt === val || tt.startsWith(val)
-  }
-}
 
 export const comboboxQuestionStrategy: FillStrategy = {
   widget: 'wd-combobox-question',
@@ -31,25 +20,13 @@ export const comboboxQuestionStrategy: FillStrategy = {
     }
     log(`${field.role} detected (combobox question)`)
 
-    const container = field.handle
-    const trigger =
-      container.querySelector<HTMLElement>('[data-automation-id="selectWidget"]') ??
-      container.querySelector<HTMLElement>('button')
-    if (!trigger) {
+    const options = await openDropdown(field.handle)
+    if (options === null) {
       log(`${field.role} skipped — no dropdown trigger`)
       return [{ role: field.role, status: 'skipped', detail: 'no trigger' }]
     }
 
-    trigger.click()
-    await wait(400)
-
-    let options = Array.from(document.querySelectorAll<HTMLElement>('li[role="option"]'))
-    if (options.length === 0) options = Array.from(document.querySelectorAll<HTMLElement>('[data-automation-id="promptOption"]'))
-    if (options.length === 0) options = Array.from(document.querySelectorAll<HTMLElement>('[role="option"]')).filter((el) => !el.getAttribute('data-automation-id'))
-
-    const want = matches(value)
-    const target = options.find((o) => want(o.textContent ?? ''))
-
+    const target = matchOption(value, options, (o) => o.textContent ?? '')
     if (target) {
       target.click()
       await wait(100)
@@ -57,7 +34,7 @@ export const comboboxQuestionStrategy: FillStrategy = {
       return [{ role: field.role, status: 'filled' }]
     }
 
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }))
+    dismissDropdown()
     const shown = typeof value === 'boolean' ? (value ? 'yes' : 'no') : value
     log(`${field.role} skipped — no option matched "${shown}" (${options.length} options)`)
     return [{ role: field.role, status: 'failed', detail: 'no option' }]

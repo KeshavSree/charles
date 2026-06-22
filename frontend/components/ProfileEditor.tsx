@@ -138,6 +138,7 @@ function EduCard({
       <Field label="Major" value={entry.major ?? ''} onChange={set('major')} />
       <div style={{ display: 'flex', gap: '8px' }}>
         <div style={{ flex: 1 }}><Field label="GPA" value={entry.gpa ?? ''} onChange={set('gpa')} /></div>
+        <div style={{ flex: 1 }}><Field label="Grad Month" value={entry.grad_month ?? ''} onChange={set('grad_month')} /></div>
         <div style={{ flex: 1 }}><Field label="Grad Year" value={entry.grad_year ?? ''} onChange={set('grad_year')} /></div>
       </div>
       <button
@@ -210,7 +211,7 @@ export default function ProfileEditor({ resumeId }: { resumeId: string }) {
   const addEdu = () =>
     setProfile((p) => ({
       ...p,
-      education: [...p.education, { institution: '', degree: null, major: null, gpa: null, grad_year: null, display_order: p.education.length }],
+      education: [...p.education, { institution: '', degree: null, major: null, gpa: null, grad_year: null, grad_month: null, display_order: p.education.length }],
     }))
 
   return (

@@ -1,10 +1,12 @@
 'use client'
 import { useEffect, useState, useRef, KeyboardEvent } from 'react'
 import { FIELDS, EMPTY_USER_INFO, UserInfo } from '@/lib/fields'
-import { fetchInfo, updateInfo } from '@/lib/api'
+import { fetchInfo, updateInfo, fetchResumes, fetchProfile } from '@/lib/api'
 
+// Excludes derived text fields (current_employer/current_title) — those are computed by
+// the extension from the résumé at fill time, so there's nothing for the user to edit here.
 const TEXT_FIELDS = FIELDS
-  .filter((f) => f.type === 'text')
+  .filter((f) => f.type === 'text' && !f.derived)
   .map((f) => ({ key: f.key as keyof UserInfo, label: f.label, type: f.inputType }))
 
 // Personal = non-link text fields (name, email, phone, address…). Links = url-typed.
@@ -12,13 +14,20 @@ const PERSONAL_FIELDS = TEXT_FIELDS.filter((f) => f.type !== 'url')
 const LINK_FIELDS = TEXT_FIELDS.filter((f) => f.type === 'url')
 
 // doubleCheck fields show "(Default)" — the extension fills them with a best-guess default.
+// Aggressive fields go in the gated Aggressive Fill section; derived fields (engine-computed
+// from the résumé, e.g. degree_pursuing/grad_date) have no user control and are excluded.
 const BOOL_FIELDS = FIELDS
-  .filter((f) => f.type === 'bool')
+  .filter((f) => f.type === 'bool' && !f.aggressive && !f.derived)
   .map((f) => ({ key: f.key as keyof UserInfo, label: f.doubleCheck ? `${f.label} (Default)` : f.label }))
 
 const STRING_APP_FIELDS = FIELDS
-  .filter((f) => f.type === 'string-enum')
+  .filter((f) => f.type === 'string-enum' && !f.aggressive && !f.derived)
   .map((f) => ({ key: f.key as keyof UserInfo, label: f.label, options: f.options }))
+
+// Editable aggressive fields (derived ones are computed by the engine, not shown here).
+const AGGRESSIVE_BOOL_FIELDS = FIELDS
+  .filter((f) => f.aggressive && !f.derived && f.type === 'bool')
+  .map((f) => ({ key: f.key as keyof UserInfo, label: f.label }))
 
 const EMPTY = EMPTY_USER_INFO
 
@@ -62,6 +71,28 @@ function BoolPicker({
         )
       })}
     </div>
+  )
+}
+
+function Toggle({ on, onChange, disabled }: { on: boolean; onChange: (v: boolean) => void; disabled?: boolean }) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={() => onChange(!on)}
+      style={{
+        padding: '4px 16px',
+        fontSize: '12px',
+        fontWeight: 600,
+        background: on ? 'var(--accent)' : 'var(--surface-2)',
+        color: on ? '#fff' : 'var(--text-muted)',
+        border: `1px solid ${on ? 'var(--accent)' : 'var(--border)'}`,
+        borderRadius: '999px',
+        cursor: disabled ? 'default' : 'pointer',
+      }}
+    >
+      {on ? 'On' : 'Off'}
+    </button>
   )
 }
 
@@ -170,7 +201,22 @@ export default function InfoPage() {
 
   useEffect(() => {
     fetchInfo()
-      .then((d) => { setInfo(d); setStatus('idle') })
+      .then(async (d) => {
+        setInfo(d)
+        setStatus('idle')
+        // Seed the "companies you've worked at" list from the résumé if unset, so the
+        // aggressive "have you worked here?" answer works out of the box (editable).
+        if (!d.worked_companies?.length) {
+          try {
+            const resumes = await fetchResumes()
+            if (!resumes.length) return
+            const newest = [...resumes].sort((a, b) => b.uploaded_at.localeCompare(a.uploaded_at))[0]
+            const profile = await fetchProfile(newest.id)
+            const companies = Array.from(new Set(profile.experience.map((e) => e.company).filter(Boolean)))
+            if (companies.length) setInfo((prev) => ({ ...prev, worked_companies: companies }))
+          } catch { /* no generated profile — leave the list empty */ }
+        }
+      })
       .catch(() => setStatus('error'))
   }, [])
 
@@ -286,6 +332,55 @@ export default function InfoPage() {
             )}
           </div>
         ))}
+      </Section>
+
+      <Section title="AGGRESSIVE FILL">
+        <div style={{ ...fullRow, display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '4px' }}>
+          <Toggle
+            on={info.aggressive_fill}
+            onChange={(v) => setInfo((prev) => ({ ...prev, aggressive_fill: v }))}
+            disabled={loading}
+          />
+          <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+            When on, the extension answers the questions below — e.g. “have you worked here?” and privacy consent.
+          </span>
+        </div>
+
+        <div style={{
+          ...fullRow,
+          opacity: info.aggressive_fill ? 1 : 0.5,
+          pointerEvents: info.aggressive_fill ? 'auto' : 'none',
+        }}>
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))',
+            gap: '14px 20px',
+            alignItems: 'start',
+          }}>
+            <div style={fullRow}>
+              <label style={labelStyle}>Companies you’ve worked at</label>
+              <ChipInput
+                items={info.worked_companies ?? []}
+                onChange={(s) => setInfo((prev) => ({ ...prev, worked_companies: s }))}
+                disabled={!info.aggressive_fill || loading}
+                placeholder="Add a company, press Enter"
+              />
+              <span style={{ display: 'block', fontSize: '10px', color: 'var(--text-muted)', marginTop: '4px' }}>
+                Auto-answers “have you worked at &lt;company&gt;?” — seeded from your résumé, edit as needed.
+              </span>
+            </div>
+            {AGGRESSIVE_BOOL_FIELDS.map(({ key, label }) => (
+              <div key={key}>
+                <label style={labelStyle}>{label}</label>
+                <BoolPicker
+                  value={info[key] as boolean | null}
+                  onChange={setBool(key)}
+                  disabled={!info.aggressive_fill || loading}
+                />
+              </div>
+            ))}
+          </div>
+        </div>
       </Section>
 
       <div style={{ marginTop: '20px', display: 'flex', alignItems: 'center', gap: '12px' }}>

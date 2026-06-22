@@ -3,6 +3,7 @@
 // (non-placeholder) options render, then click the inner promptOption.
 
 import { wait, fireClick, setNativeValue, log } from '../../dom'
+import { pollOptions } from '../helpers/pollOptions'
 import type { FillStrategy } from '../../types'
 
 function optionLabel(o: HTMLElement): string {
@@ -14,17 +15,6 @@ function optionLabel(o: HTMLElement): string {
 // search resolves — they are not selectable skills.
 function isPlaceholder(label: string): boolean {
   return label === '' || /^no items|^no results|^loading|^searching/i.test(label)
-}
-
-async function pollForOptions(maxMs: number): Promise<HTMLElement[]> {
-  const start = Date.now()
-  for (;;) {
-    const all = Array.from(document.querySelectorAll<HTMLElement>('[data-automation-id="menuItem"][role="option"]'))
-    const real = all.filter((o) => !isPlaceholder(optionLabel(o)))
-    if (real.length) return real
-    if (Date.now() - start >= maxMs) return []
-    await wait(300)
-  }
 }
 
 // Trigger exactly ONE remote search: silently prefill all but the last character
@@ -63,7 +53,11 @@ export const multiselectStrategy: FillStrategy = {
       el.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', keyCode: 13, bubbles: true }))
       await wait(600)
 
-      const opts = await pollForOptions(3000)
+      const opts = await pollOptions(
+        () => Array.from(document.querySelectorAll<HTMLElement>('[data-automation-id="menuItem"][role="option"]')),
+        (o) => !isPlaceholder(optionLabel(o)),
+        { maxMs: 3000, stepMs: 300 },
+      )
       const first = opts[0] ?? null
       if (!first) {
         log(`skill "${skill}" skipped — no search results`)

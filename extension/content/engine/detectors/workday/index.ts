@@ -4,7 +4,7 @@
 // input, the file input, and section Add buttons).
 
 import { FIELDS } from '../../../../../frontend/lib/fields'
-import { classifyRole } from '../../semantic'
+import { classifyRole, getGroupLabel, GROUP_FIELDS } from '../../semantic'
 import type { Detector, DetectedField } from '../../types'
 
 const SKIP_TYPES = new Set(['hidden', 'submit', 'button', 'image', 'reset', 'file', 'checkbox', 'radio'])
@@ -13,11 +13,6 @@ const SKIP_TYPES = new Set(['hidden', 'submit', 'button', 'image', 'reset', 'fil
 const COMBOBOX_FIELDS = FIELDS
   .filter((f) => f.aidPattern)
   .map((f) => ({ re: new RegExp(f.aidPattern as string, 'i'), role: f.fillKey ?? f.key }))
-
-// Radio/checkbox roles (work_authorized, gender, …) — fields with a group label regex.
-const GROUP_FIELDS = FIELDS
-  .filter((f) => f.groupRe)
-  .map((f) => ({ re: new RegExp(f.groupRe as string, 'i'), role: f.key, isBool: f.type === 'bool' }))
 
 // Repeatable add-and-fill sections, identified by nearest heading text.
 const SECTION_SPECS: Array<{ role: string; headingRe: RegExp }> = [
@@ -33,28 +28,6 @@ function isComboboxHoused(el: Element): boolean {
   if (!container) return false
   const aid = container.getAttribute('data-automation-id') ?? ''
   return COMBOBOX_FIELDS.some((c) => c.re.test(aid))
-}
-
-/** Combined group label for a set of radios (legend → role group aria → name). */
-export function getGroupLabel(radios: HTMLInputElement[]): string {
-  for (const r of radios) {
-    const legend = r.closest('fieldset')?.querySelector('legend')
-    if (legend?.textContent) return legend.textContent.toLowerCase()
-  }
-  for (const r of radios) {
-    const container = r.closest('[role="group"],[role="radiogroup"]')
-    if (container) {
-      const labelledBy = container.getAttribute('aria-labelledby')
-      if (labelledBy) {
-        const text = document.getElementById(labelledBy)?.textContent
-        if (text) return text.toLowerCase()
-      }
-      const ariaLabel = container.getAttribute('aria-label')
-      if (ariaLabel) return ariaLabel.toLowerCase()
-    }
-  }
-  if (radios[0]?.name) return radios[0].name.toLowerCase()
-  return ''
 }
 
 /**

@@ -221,6 +221,7 @@ async def generate_profile_from_resume(session: AsyncSession, resume_id: str) ->
             major=e.major or None,
             gpa=e.gpa or None,
             grad_year=e.grad_year or None,
+            grad_month=e.grad_month or None,
             display_order=i,
         ))
 

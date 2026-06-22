@@ -15,7 +15,7 @@ interface ResumeProfileExperience {
 
 interface ResumeProfileEducation {
   institution: string; degree: string | null; major: string | null
-  gpa: string | null; grad_year: string | null; display_order: number
+  gpa: string | null; grad_year: string | null; grad_month: string | null; display_order: number
 }
 
 interface ResumeProfile {
@@ -48,6 +48,32 @@ function mergeForFill(info: UserInfo, profile: ResumeProfile | null): UserInfo {
   return result as unknown as UserInfo
 }
 
+const END_MONTHS: Record<string, number> = {
+  jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6,
+  jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12,
+}
+
+// Recency rank for an experience entry's end date. A current role (or an end date of
+// "Present"/"Current") ranks highest; otherwise rank by parsed year*100 + month.
+// Absent/unparseable end dates rank lowest so any dated job outranks them.
+function endRank(e: ResumeProfileExperience): number {
+  if (e.is_current) return Number.POSITIVE_INFINITY
+  const s = (e.end_date ?? '').toLowerCase()
+  if (!s) return -1
+  if (/present|current/.test(s)) return Number.POSITIVE_INFINITY
+  const yr = s.match(/(?:19|20)\d{2}/)
+  if (!yr) return -1
+  const month = Object.keys(END_MONTHS).find((m) => s.includes(m))
+  return parseInt(yr[0], 10) * 100 + (month ? END_MONTHS[month] : 0)
+}
+
+// The résumé's "current or previous" job: a current role if any, else the entry with the
+// most recent end date. Ties break toward the earlier display_order (résumé order).
+function deriveCurrentJob(experience: ResumeProfileExperience[]): ResumeProfileExperience | null {
+  if (!experience.length) return null
+  return [...experience].sort((a, b) => endRank(b) - endRank(a) || a.display_order - b.display_order)[0]
+}
+
 // Build the plain-data fill request handed to the engine. No regex, no Workday ids —
 // just values keyed by role, semantic experience/education entries, skills, and the
 // resume PDF. The engine does all detection/classification using its bundled FIELDS.
@@ -67,6 +93,16 @@ function buildFillRequest(info: UserInfo, profile: ResumeProfile | null): FillRe
   }
   values['full_name'] = `${merged.first_name} ${merged.last_name}`.trim()
 
+  // Chosen / preferred name — the user's set value, else fall back to their first name so a
+  // required "Chosen Name" field still fills.
+  values['chosen_name'] = (merged.chosen_name || merged.first_name || '').trim()
+
+  // Current/previous employer + job title — derived from the résumé's most-recent job
+  // (computed here like full_name, not stored). Empty string when there's no experience.
+  const currentJob = deriveCurrentJob(profile?.experience ?? [])
+  values['current_employer'] = currentJob?.company ?? ''
+  values['current_title'] = currentJob?.title ?? ''
+
   const experience = profile?.experience
     ? [...profile.experience].sort((a, b) => a.display_order - b.display_order)
     : []
@@ -76,8 +112,12 @@ function buildFillRequest(info: UserInfo, profile: ResumeProfile | null): FillRe
   const skills = (merged.skills ?? []).filter(Boolean)
   const websites = (merged.websites ?? []).filter(Boolean)
 
+  // Aggressive-fill settings live on UserInfo directly (not in the FIELDS-driven values).
+  const aggressive = info.aggressive_fill ?? false
+  const workedCompanies = (info.worked_companies ?? []).filter(Boolean)
+
   // resume is attached asynchronously by the click handler (needs the PDF bytes).
-  return { values, experience, education, websites, skills, resume: null }
+  return { values, experience, education, websites, skills, resume: null, aggressive, workedCompanies }
 }
 
 // Fetch the active resume's PDF and base64-encode it so it can ride along inside the
@@ -150,6 +190,40 @@ function showDetails(filledFields: string[], skippedFields: string[], doubleChec
   if (doubleCheckFields.length) renderSection(`⚠ Double-check (${doubleCheckFields.length})`, 'warn', doubleCheckFields, 'chip-warn')
 }
 
+// executeScript with allFrames returns one InjectionResult per frame. The real form
+// lives in exactly one frame — often a cross-origin iframe (e.g. a Greenhouse embed) —
+// while every other frame (the wrapper page, ad/analytics iframes) detects nothing and
+// reports every request value as "skipped". Merge across frames: a role filled in ANY
+// frame counts as filled and so isn't skipped, dropping that per-frame skipped noise.
+function mergeSummaries(summaries: FillSummary[]): FillSummary {
+  const filledFields = new Set<string>()
+  const doubleCheckFields = new Set<string>()
+  const skippedFields = new Set<string>()
+  const needsYou: string[] = []
+  const didntLand: string[] = []
+  let filled = 0
+  for (const s of summaries) {
+    filled += s.filled
+    s.filledFields.forEach((f) => filledFields.add(f))
+    s.doubleCheckFields.forEach((f) => doubleCheckFields.add(f))
+    s.skippedFields.forEach((f) => skippedFields.add(f))
+    needsYou.push(...s.needsYou)
+    didntLand.push(...s.didntLand)
+  }
+  // A role filled (or flagged double-check) in any frame is not skipped overall.
+  for (const f of filledFields) skippedFields.delete(f)
+  for (const f of doubleCheckFields) skippedFields.delete(f)
+  return {
+    filled,
+    skipped: skippedFields.size,
+    filledFields: [...filledFields],
+    skippedFields: [...skippedFields],
+    doubleCheckFields: [...doubleCheckFields],
+    needsYou,
+    didntLand,
+  }
+}
+
 async function init() {
   const select  = document.getElementById('resume-select') as HTMLSelectElement
   const fillBtn = document.getElementById('fill-btn') as HTMLButtonElement
@@ -204,22 +278,33 @@ async function init() {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
       if (!tab?.id) throw new Error('No active tab')
 
-      // Inject the bundled engine (a real module graph), then invoke it via a tiny
-      // bridge func that returns the summary. Both run in the same isolated world,
-      // so the second call sees globalThis.__charlesEngine set by the first.
+      // Inject the bundled engine (a real module graph) into every frame, then invoke
+      // it via a tiny bridge func that returns the summary. allFrames is what lets us
+      // reach a form embedded in a cross-origin iframe (e.g. a Greenhouse embed): the
+      // engine runs in the iframe's own context, where location.hostname is the real
+      // form's host. Frames that didn't receive the engine (file injection skipped) or
+      // that aren't a form are harmless — the bridge returns null and we drop them.
+      // Both calls run in the same isolated world per frame, so the second sees
+      // globalThis.__charlesEngine set by the first.
       await chrome.scripting.executeScript({
-        target: { tabId: tab.id },
+        target: { tabId: tab.id, allFrames: true },
         files: ['dist/content/engine.js'],
       })
-      const [{ result }] = await chrome.scripting.executeScript({
-        target: { tabId: tab.id },
-        func: (req) => (globalThis as unknown as {
-          __charlesEngine: { run: (r: FillRequest) => Promise<FillSummary> }
-        }).__charlesEngine.run(req),
+      const injectionResults = await chrome.scripting.executeScript({
+        target: { tabId: tab.id, allFrames: true },
+        func: (req) => {
+          const engine = (globalThis as unknown as {
+            __charlesEngine?: { run: (r: FillRequest) => Promise<FillSummary> }
+          }).__charlesEngine
+          return engine ? engine.run(req) : null
+        },
         args: [request],
       })
 
-      const summary = result as FillSummary
+      const summaries = injectionResults
+        .map((r) => r.result as FillSummary | null)
+        .filter((s): s is FillSummary => s != null)
+      const summary = mergeSummaries(summaries)
       setStatus(
         `Filled ${summary.filled} field(s)${summary.skipped ? `, skipped ${summary.skipped}` : ''}`,
         summary.filled > 0 ? 'ok' : 'err',

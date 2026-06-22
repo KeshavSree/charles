@@ -72,7 +72,7 @@ Copy `.env.example` to `.env`. All settings are optional — SQLite (`jobs.db`) 
 
 The autofill engine uses a detector/strategy pattern:
 
-- **Detectors** (`content/engine/detectors/`) — scan the DOM and return `DetectedField[]`, each tagged with a semantic `role` (a `fields.ts` key) and `widget` type. Currently one detector: `WorkdayDetector`.
+- **Detectors** (`content/engine/detectors/`) — scan the DOM and return `DetectedField[]`, each tagged with a semantic `role` (a `fields.ts` key) and `widget` type. Detectors: `WorkdayDetector`, `GreenhouseDetector`. `detectors/index.ts` routes by hostname (`detectAts()`); the engine is injected into all frames, so an ATS form in a cross-origin iframe resolves to its own detector.
 - **Strategies** (`content/engine/strategies/`) — one per widget type; know how to fill that widget. Keyed by `WidgetType` in a `Map`.
 - **Dispatcher** (`content/engine/dispatcher.ts`) — detect → order by strategy priority → fill → collect results → post-fill review pass.
 

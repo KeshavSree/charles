@@ -3,6 +3,7 @@
 // click-Add → diff-new-ids → fill-by-prefix loop.
 
 import { wait, fillInput, setNativeValue, parseDateParts, log, trunc } from '../../dom'
+import { matchOption } from '../helpers/optionMatch'
 import { findSectionAddButton, SECTION_HEADINGS } from '../../detectors/workday'
 import type { FillStrategy, FillResult, ExperienceEntry, EducationEntry } from '../../types'
 
@@ -163,10 +164,7 @@ export const sectionStrategy: FillStrategy = {
         trigger.click()
         await wait(400)
         const opts = Array.from(document.querySelectorAll<HTMLElement>('li[role="option"]'))
-        const val = value.toLowerCase()
-        const match =
-          opts.find((o) => (o.textContent ?? '').trim().toLowerCase() === val) ??
-          opts.find((o) => (o.textContent ?? '').trim().toLowerCase().startsWith(val))
+        const match = matchOption(value, opts, (o) => o.textContent ?? '')
         if (match) {
           match.click()
           await wait(200)

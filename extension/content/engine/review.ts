@@ -39,6 +39,13 @@ function isEmpty(handle: HTMLElement, widget: string): boolean {
     }
     case 'wd-multiselect':
       return !handle.closest('[data-automation-id="multiSelectContainer"]')?.querySelector('[data-automation-id="selectedItem"]')
+    case 'gh-react-select': {
+      // Empty when the control shows no chosen value (no single-value node, or it still
+      // reads the "Select…" placeholder). handle is the combobox input.
+      const control = handle.closest('[class*="select__control"]') ?? handle
+      const t = (control.querySelector('[class*="single-value"]')?.textContent ?? '').trim()
+      return t === '' || /^select/i.test(t)
+    }
     default:
       return false // sections, file upload — not meaningfully "empty"
   }

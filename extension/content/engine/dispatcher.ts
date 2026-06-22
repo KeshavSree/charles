@@ -4,6 +4,7 @@
 
 import { FIELDS } from '../../../frontend/lib/fields'
 import { detectAts, detectorFor, WorkdayDetector } from './detectors'
+import { AGGRESSIVE_ROLES } from './semantic'
 import { STRATEGIES } from './strategies'
 import { runReview } from './review'
 import { log, wait } from './dom'
@@ -30,6 +31,11 @@ export async function run(req: FillRequest, onProgress?: (msg: string) => void):
   for (const field of ordered) {
     const strategy = STRATEGIES.get(field.widget)
     if (!strategy) continue
+    // Aggressive-fill gate: skip aggressive-marked roles unless the user opted in.
+    if (AGGRESSIVE_ROLES.has(field.role) && !req.aggressive) {
+      results.push({ role: field.role, status: 'skipped', detail: 'aggressive off' })
+      continue
+    }
     try {
       results.push(...(await strategy.fill(field, { req, log })))
     } catch (e) {
