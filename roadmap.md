@@ -37,6 +37,7 @@ referral network
 # Payment?
 - Some of the most useful simplify features are free
 - maybe pay per usage for premium features?
+- Integrate existing llm they are paying for they don't have to use token costs
 
 
 # My current idea for ats workflow
@@ -63,8 +64,7 @@ by human get placed in a data format that a coding agent can read, allowing us t
 - Field Detection
 - orchestration layer (langgraph?)
 - Tool construction
-- Straight up Greenhouse support 
-- Human in the loop verification of results
+- Straight up Greenhouse support
 - Field promotion (unfamiliar->familiar)
 
 

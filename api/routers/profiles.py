@@ -36,6 +36,7 @@ class EducationOut(BaseModel):
     major: str | None
     gpa: str | None
     grad_year: str | None
+    grad_month: str | None = None
     display_order: int
 
     model_config = {"from_attributes": True}
@@ -71,6 +72,7 @@ class EducationIn(BaseModel):
     major: str | None = None
     gpa: str | None = None
     grad_year: str | None = None
+    grad_month: str | None = None
     display_order: int = 0
 
 
@@ -173,7 +175,8 @@ async def update_profile(
     for i, e in enumerate(body.education):
         session.add(ProfileEducation(
             profile_id=resume_id, institution=e.institution, degree=e.degree,
-            major=e.major, gpa=e.gpa, grad_year=e.grad_year, display_order=i,
+            major=e.major, gpa=e.gpa, grad_year=e.grad_year, grad_month=e.grad_month,
+            display_order=i,
         ))
     await session.commit()
     return await _load_profile_out(session, resume_id)

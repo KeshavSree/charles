@@ -4,6 +4,12 @@ import re
 from dataclasses import dataclass
 
 _YEAR = re.compile(r"\b(20\d{2}|19\d{2})\b")
+# Month + year together (e.g. "May 2028", "Dec. 2027") — captures the graduation month
+# the year-only regex discards. Checked first; _YEAR remains the fallback.
+_MONTH_YEAR = re.compile(
+    r"\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+(20\d{2}|19\d{2})\b",
+    re.IGNORECASE,
+)
 _GPA = re.compile(r"GPA[:\s]+(\d\.\d+)", re.IGNORECASE)
 _DEGREE_KEYWORDS = re.compile(
     r"\b(Bachelor|Master|PhD|Doctor|Associate|B\.?S\.?|M\.?S\.?|B\.?A\.?|M\.?A\.?|M\.?Eng\.?)\b",
@@ -19,6 +25,7 @@ class EducationEntry:
     major: str = ""
     gpa: str = ""
     grad_year: str = ""
+    grad_month: str = ""
 
 
 def extract_education(section_text: str) -> list[EducationEntry]:
@@ -37,6 +44,10 @@ def extract_education(section_text: str) -> list[EducationEntry]:
             m = _GPA.search(line)
             if m:
                 entry.gpa = m.group(1)
+            my = _MONTH_YEAR.search(line)
+            if my and not entry.grad_year:
+                entry.grad_month = my.group(1).title()
+                entry.grad_year = my.group(2)
             y = _YEAR.search(line)
             if y and not entry.grad_year:
                 entry.grad_year = y.group(1)

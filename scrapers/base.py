@@ -1,9 +1,14 @@
 from __future__ import annotations
 
 import abc
+import re
 from datetime import datetime
 from html.parser import HTMLParser
 from typing import Optional
+
+# Match "intern" only as a whole word (incl. intern/interns/internship/internships) so
+# titles like "Internal Engineering" or "International ..." aren't misread as internships.
+_INTERN_RE = re.compile(r"\bintern(ship)?s?\b", re.IGNORECASE)
 
 import httpx
 from pydantic import BaseModel, computed_field, field_validator
@@ -56,7 +61,7 @@ class JobPosting(BaseModel):
     @computed_field
     @property
     def seniority(self) -> str:
-        return "intern" if "intern" in self.title.lower() else "full_time"
+        return "intern" if _INTERN_RE.search(self.title) else "full_time"
 
 
 class BaseScraper(abc.ABC):

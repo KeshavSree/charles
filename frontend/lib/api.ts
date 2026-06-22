@@ -110,6 +110,7 @@ export interface ProfileEducation {
   major: string | null
   gpa: string | null
   grad_year: string | null
+  grad_month: string | null
   display_order: number
 }
 

@@ -1,10 +1,32 @@
-// Workday add-and-fill sections (Work Experience, Education). This strategy owns the
-// Workday-specific mapping from semantic profile entries → Workday field ids, plus the
-// click-Add → diff-new-ids → fill-by-prefix loop.
+// Workday add-and-fill sections (Work Experience, Education, Websites). Owns the Workday
+// mapping from semantic profile entries → Workday field ids, plus the click-Add → diff-new-
+// ids → fill-by-prefix loop. The candidate is a section Add button, matched to its role by
+// the nearest heading (registry leaf rules). Ported verbatim from the old wd-section strategy
+// (with findSectionAddButton/headings inlined here).
 
 import { wait, fillInput, setNativeValue, parseDateParts, log, trunc } from '../../dom'
-import { findSectionAddButton, SECTION_HEADINGS } from '../../detectors/workday'
-import type { FillStrategy, FillResult, ExperienceEntry, EducationEntry } from '../../types'
+import { matchOption } from '../../helpers/optionMatch'
+import type { Widget, FillResult, ExperienceEntry, EducationEntry } from '../../types'
+
+const SECTION_HEADINGS: Record<string, RegExp> = {
+  experience: /work.?experience/i,
+  education: /education/i,
+  websites: /websites/i,
+}
+
+// Find a section's "Add" button by walking up from each add-button to a matching heading.
+// All Workday Add buttons share aid="add-button"; the nearest heading disambiguates.
+function findSectionAddButton(headingRe: RegExp): HTMLElement | null {
+  const btns = Array.from(document.querySelectorAll<HTMLElement>('[data-automation-id="add-button"]'))
+  for (const btn of btns) {
+    let node: Element | null = btn.parentElement
+    for (let k = 0; k < 12 && node; k++, node = node.parentElement) {
+      const heading = node.querySelector('h1,h2,h3,h4,[role="heading"]')
+      if (heading && headingRe.test(heading.textContent ?? '')) return btn
+    }
+  }
+  return null
+}
 
 const DEGREE_MAP: Record<string, string> = {
   'B.S.': 'Bachelor of Science',
@@ -13,12 +35,12 @@ const DEGREE_MAP: Record<string, string> = {
 }
 
 interface EntryPlan {
-  namedFields: Record<string, string>      // id suffix → value (filled as text)
-  namedCheckboxes: Record<string, boolean> // id suffix → checked
-  dateSuffixes: Record<string, string>     // id suffix → value (month/year inputs)
-  textareaSuffixes: Record<string, string> // id suffix → value
-  typeaheadFields: Record<string, string>  // id suffix → value (type + wait + pick)
-  comboboxFields: Record<string, string>   // formField aid → value (click button, pick option)
+  namedFields: Record<string, string>
+  namedCheckboxes: Record<string, boolean>
+  dateSuffixes: Record<string, string>
+  textareaSuffixes: Record<string, string>
+  typeaheadFields: Record<string, string>
+  comboboxFields: Record<string, string>
 }
 
 const emptyPlan = (): EntryPlan => ({
@@ -49,18 +71,28 @@ function planEducation(edu: EducationEntry): EntryPlan {
   return plan
 }
 
-// Websites: each entry is a single URL text field (id suffix `url`, e.g. webAddress-N--url).
 function planWebsite(url: string): EntryPlan {
   const plan = emptyPlan()
   if (url) plan.namedFields.url = url
   return plan
 }
 
-export const sectionStrategy: FillStrategy = {
-  widget: 'wd-section',
+export const sectionWidget: Widget = {
+  name: 'section',
   priority: 50,
-  async fill(field, ctx) {
-    const role = field.role
+  detect(doc) {
+    return Array.from(doc.querySelectorAll<HTMLElement>('[data-automation-id="add-button"]')).map((b) => ({ handle: b }))
+  },
+  label(c) {
+    let node: Element | null = c.handle.parentElement
+    for (let k = 0; k < 12 && node; k++, node = node.parentElement) {
+      const heading = node.querySelector('h1,h2,h3,h4,[role="heading"]')
+      if (heading?.textContent?.trim()) return heading.textContent.toLowerCase()
+    }
+    return ''
+  },
+  async fill(_c, input, ctx) {
+    const role = input.field
     const plans: EntryPlan[] =
       role === 'experience' ? ctx.req.experience.map(planExperience)
       : role === 'education' ? ctx.req.education.map(planEducation)
@@ -75,7 +107,6 @@ export const sectionStrategy: FillStrategy = {
       const plan = plans[idx]
       const tag = `${role}[${idx}]`
 
-      // Re-find the Add button each iteration — the DOM changes after each Add.
       const addBtn = findSectionAddButton(headingRe)
       if (!addBtn) { log(`${tag} skipped — no Add button found`); results.push({ role, status: 'skipped' }); continue }
 
@@ -114,8 +145,6 @@ export const sectionStrategy: FillStrategy = {
         if (!value) continue
         const el = document.getElementById(`${prefix}--${suffix}`) as HTMLInputElement | null
         if (!el) continue
-        // Month filled without focusout — firing it before the year is set makes
-        // Workday validate an incomplete "08/". focusout on the year validates the pair.
         const isYear = suffix.includes('Year')
         fillInput(el, value, isYear)
         log(`${tag}.${suffix} filled ✓ = "${value}"`)
@@ -128,7 +157,6 @@ export const sectionStrategy: FillStrategy = {
         if (el) { fillInput(el, value); log(`${tag}.${suffix} filled ✓ = "${trunc(value)}"`); results.push({ role, status: 'filled' }) }
       }
 
-      // Typeahead (school/major): type, wait for suggestions, click best match or Enter.
       for (const [suffix, value] of Object.entries(plan.typeaheadFields)) {
         if (!value) continue
         const el = document.getElementById(`${prefix}--${suffix}`) as HTMLInputElement | null
@@ -154,7 +182,6 @@ export const sectionStrategy: FillStrategy = {
         results.push({ role, status: 'filled' })
       }
 
-      // Combobox (degree): click button, pick li[role=option] by text.
       for (const [aid, value] of Object.entries(plan.comboboxFields)) {
         if (!value) continue
         const container = document.querySelector<HTMLElement>(`[data-automation-id="${aid}"]`)
@@ -163,10 +190,7 @@ export const sectionStrategy: FillStrategy = {
         trigger.click()
         await wait(400)
         const opts = Array.from(document.querySelectorAll<HTMLElement>('li[role="option"]'))
-        const val = value.toLowerCase()
-        const match =
-          opts.find((o) => (o.textContent ?? '').trim().toLowerCase() === val) ??
-          opts.find((o) => (o.textContent ?? '').trim().toLowerCase().startsWith(val))
+        const match = matchOption(value, opts, (o) => o.textContent ?? '')
         if (match) {
           match.click()
           await wait(200)
@@ -183,5 +207,8 @@ export const sectionStrategy: FillStrategy = {
     }
 
     return results
+  },
+  isEmpty() {
+    return false
   },
 }
