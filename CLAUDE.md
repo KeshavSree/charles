@@ -68,17 +68,19 @@ Copy `.env.example` to `.env`. All settings are optional — SQLite (`jobs.db`) 
 
 ### Chrome extension
 
-`extension/` — TypeScript, built with esbuild. Entry points: `popup/popup.ts`, `content/engine/`.
+`extension/` — TypeScript, built with esbuild (watch is always running — use `npm run typecheck`). Entry point: `content/engine/index.ts` (+ `popup/popup.ts`).
 
-The autofill engine uses a detector/strategy pattern:
+The autofill engine is a **registry-driven, ATS × widget × field** model:
 
-- **Detectors** (`content/engine/detectors/`) — scan the DOM and return `DetectedField[]`, each tagged with a semantic `role` (a `fields.ts` key) and `widget` type. Detectors: `WorkdayDetector`, `GreenhouseDetector`. `detectors/index.ts` routes by hostname (`detectAts()`); the engine is injected into all frames, so an ATS form in a cross-origin iframe resolves to its own detector.
-- **Strategies** (`content/engine/strategies/`) — one per widget type; know how to fill that widget. Keyed by `WidgetType` in a `Map`.
-- **Dispatcher** (`content/engine/dispatcher.ts`) — detect → order by strategy priority → fill → collect results → post-fill review pass.
+- **Registry** (`content/engine/registry.ts`) — THE MAP: `ATS → widget → { field: rule }`. The single place showing which fields each ATS supports and how each is recognized. Each leaf pairs a widget module with the fields it carries, keyed by field role to a recognition rule (a `RegExp`, or a `FieldRule` with `exclude`/`reject`/`resolve`/`fillOpts`). Rules are single-sourced consts listed per-leaf; a field missing from an ATS is a visible gap. Run `npm run coverage` to print the field × ATS matrix.
+- **Widgets** (`content/engine/widgets/`) — one module per widget, each owning `detect` (find candidates) + `label` (text to match rules against) + `fill` + `isEmpty`. Shared widgets (`text`, `radio`, `checkbox`, `file`) at the top; ATS-specific under `widgets/greenhouse/` and `widgets/workday/`.
+- **Runtime** (`content/engine/runtime.ts`) — the generic loop: detect per widget (registry order; a claimed-subtree set handles "housing" so e.g. a react-select's inner input isn't also filled as text) → match each candidate to a field by its rule → fill (ordered by `widget.priority`, aggressive-gated) → post-fill review (`reviewPass.ts`, via `widget.isEmpty`). Injected into all frames, so a cross-origin ATS iframe resolves via `location.hostname`.
+- **Helpers** (`content/engine/helpers/`) — shared utilities: label resolvers (`labels.ts`), option matching (`optionMatch.ts`, incl. phone dial-code tolerance), enum matching (`enumMatch.ts`), polling, the Workday dropdown opener, `worked_here` derivation.
+- **Values** (`content/engine/values.ts`) + popup — résumé-derived values (full_name, chosen_name fallback, current_employer/title, degree_pursuing, grad_date) are computed in `popup.ts buildFillRequest` and filled like stored values; DOM-dependent derivation (`worked_here`) is a leaf `resolve`.
 
-Adding a new ATS: add a detector in `detectors/`, register it in `detectors/index.ts`. Adding a new widget type: add a strategy in `strategies/`, register it in `strategies/index.ts`, add the type to `WidgetType` in `types.ts`.
+Adding a field: add it to `frontend/lib/fields.ts` (the catalog) + `UserInfo` (+ backend `schemas.py`/`models.py`/`db.py` migration if stored), then add a leaf entry per ATS in `registry.ts` with its recognition rule. Adding a widget: add a module in `widgets/`, reference it from registry leaves. Adding an ATS: add a key to `REGISTRY` + `Ats`, compose its widgets.
 
-`frontend/lib/fields.ts` is imported by both the extension and the frontend — edit it carefully, it affects both.
+`frontend/lib/fields.ts` is the field **catalog** (identity/type/options/labels/values), imported by both the extension and the frontend — edit carefully. Detection rules live in the **registry**, not the catalog.
 
 ### Testing
 

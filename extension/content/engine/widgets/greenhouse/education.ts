@@ -1,16 +1,15 @@
 // Greenhouse education section: a repeatable block with two react-selects per entry —
-// School (#school--N, an async typeahead over a university list) and Degree (#degree--N,
-// a dropdown). Entry 0 is pre-rendered; further entries appear after clicking the
-// section's "Add" control. Each select is driven by the shared react-select fill.
+// School (#school--N, an async typeahead) and Degree (#degree--N, a dropdown). Entry 0 is
+// pre-rendered; further entries appear after clicking the section's "Add". Each select is
+// driven by the shared react-select fill. Ported verbatim from the old education strategy.
 
 import { wait, fireClick, log, trunc } from '../../dom'
 import { fillReactSelect } from './reactSelect'
-import type { FillStrategy, FillResult } from '../../types'
+import type { Widget, FillResult } from '../../types'
 
-// Resume parsers emit terse degree tokens ("B.S.", "Bachelor of Science", "PhD"). Reduce
-// them to the leading degree keyword, which startsWith-matches the dropdown options
-// ("Bachelor" → "Bachelor's Degree"). Order matters — check more specific first.
-// Unrecognized values pass through and rely on the matcher's fuzzy tiers.
+// Resume parsers emit terse degree tokens ("B.S.", "Bachelor of Science", "PhD"). Reduce to
+// the leading degree keyword, which startsWith-matches the dropdown options. Check specific
+// first; unrecognized values pass through to the matcher's fuzzy tiers.
 function mapDegree(d: string): string {
   const t = d.trim()
   if (/\b(doctor|ph\.?\s*d)/i.test(t)) return 'Doctor'
@@ -20,8 +19,8 @@ function mapDegree(d: string): string {
   return t
 }
 
-// The "Add another" control lives inside the education section; find it by walking up
-// from the first school input and matching a button/link whose text contains "add".
+// The "Add another" control lives inside the education section; find it by walking up from
+// the first school input and matching a button/link whose text contains "add".
 function findAddButton(): HTMLElement | null {
   const school = document.querySelector<HTMLElement>('input[id^="school--"]')
   let node: Element | null = school?.parentElement ?? null
@@ -36,8 +35,7 @@ function findAddButton(): HTMLElement | null {
 async function fillSelect(tag: string, id: string, value: string, results: FillResult[]): Promise<void> {
   const el = document.getElementById(id)
   if (!el) { log(`${tag} skipped — #${id} not found`); return }
-  // School/Degree are searched, and the option phrasing rarely matches the stored value
-  // verbatim ("Purdue University" vs "… — Purdue University"), so allow closest match.
+  // School/Degree are searched; phrasing rarely matches the stored value verbatim, so fuzzy.
   const r = await fillReactSelect(el, value, { fuzzy: true })
   if (r.filled) {
     log(`${tag} filled ✓ = "${trunc(r.shown)}"`)
@@ -48,10 +46,17 @@ async function fillSelect(tag: string, id: string, value: string, results: FillR
   }
 }
 
-export const educationSectionStrategy: FillStrategy = {
-  widget: 'gh-education-section',
+export const educationWidget: Widget = {
+  name: 'education',
   priority: 55,
-  async fill(_field, ctx) {
+  detect(doc) {
+    const school = doc.querySelector<HTMLElement>('input[id^="school--"]')
+    return school ? [{ handle: school }] : []
+  },
+  label() {
+    return 'education'
+  },
+  async fill(_c, _input, ctx) {
     const entries = ctx.req.education
     if (!entries.length) return []
     const results: FillResult[] = []
@@ -80,5 +85,8 @@ export const educationSectionStrategy: FillStrategy = {
     }
 
     return results
+  },
+  isEmpty() {
+    return false
   },
 }

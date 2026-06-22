@@ -1,5 +1,6 @@
 import { FIELDS, FIELD_LABELS, UserInfo } from '../../frontend/lib/fields'
 import type { FillRequest, FillSummary } from '../content/engine/types'
+import { deriveDegreePursuing, deriveGradDate } from '../content/engine/values'
 
 const API = 'http://localhost:8000'
 const STORAGE_KEY = 'activeResumeId'
@@ -109,6 +110,11 @@ function buildFillRequest(info: UserInfo, profile: ResumeProfile | null): FillRe
   const education = profile?.education
     ? [...profile.education].sort((a, b) => a.display_order - b.display_order)
     : []
+
+  // Résumé-derived answers — computed here (need only the parsed education) and filled by the
+  // engine like any stored value. Replaces the old fill-time VALUE_DERIVATIONS.
+  values['degree_pursuing'] = deriveDegreePursuing(education)
+  values['grad_date'] = deriveGradDate(education)
   const skills = (merged.skills ?? []).filter(Boolean)
   const websites = (merged.websites ?? []).filter(Boolean)
 

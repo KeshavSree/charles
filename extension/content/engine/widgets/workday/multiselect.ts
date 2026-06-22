@@ -1,25 +1,23 @@
-// Workday skills multiselect ("monikerSearchBox"). For each skill: prefill + one
-// keystroke to fire a single remote search, Enter to commit, poll until real
-// (non-placeholder) options render, then click the inner promptOption.
+// Workday skills multiselect ("monikerSearchBox"). For each skill: prefill + one keystroke
+// to fire a single remote search, Enter to commit, poll until real options render, then click
+// the inner promptOption. The leaf rule is a catch-all (presence of #skills--skills is the
+// signal); fill reads skills from the request. Ported from the old wd-multiselect strategy.
 
 import { wait, fireClick, setNativeValue, log } from '../../dom'
-import { pollOptions } from '../helpers/pollOptions'
-import type { FillStrategy } from '../../types'
+import { pollOptions } from '../../helpers/pollOptions'
+import type { Widget, FillResult } from '../../types'
 
 function optionLabel(o: HTMLElement): string {
   const p = o.querySelector('[data-automation-id="promptOption"]')
   return (p?.getAttribute('data-automation-label') ?? p?.textContent ?? o.textContent ?? '').trim()
 }
 
-// "No Items.", loading and empty states render as a menuItem before the remote
-// search resolves — they are not selectable skills.
 function isPlaceholder(label: string): boolean {
   return label === '' || /^no items|^no results|^loading|^searching/i.test(label)
 }
 
-// Trigger exactly ONE remote search: silently prefill all but the last character
-// (no events → no search), then "type" the final character with a full key+input
-// sequence. Avoids the rapid-fire race that overwrites results with a stale "No Items."
+// Trigger exactly ONE remote search: silently prefill all but the last char (no events),
+// then "type" the final char with a full key+input sequence — avoids the rapid-fire race.
 async function typeQuery(el: HTMLInputElement, text: string): Promise<void> {
   el.focus()
   el.click()
@@ -34,20 +32,26 @@ async function typeQuery(el: HTMLInputElement, text: string): Promise<void> {
   el.dispatchEvent(new KeyboardEvent('keyup', { key: last, keyCode: code, bubbles: true }))
 }
 
-export const multiselectStrategy: FillStrategy = {
-  widget: 'wd-multiselect',
+export const multiselectWidget: Widget = {
+  name: 'multiselect',
   priority: 60,
-  async fill(_field, ctx) {
+  detect(doc) {
+    const el = doc.getElementById('skills--skills')
+    return el ? [{ handle: el }] : []
+  },
+  label() {
+    return 'skills'
+  },
+  async fill(_c, _input, ctx) {
     const skills = ctx.req.skills
     if (!skills.length) return []
-    const results: import('../../types').FillResult[] = []
+    const results: FillResult[] = []
 
     for (const skill of skills) {
       const el = document.getElementById('skills--skills') as HTMLInputElement | null
       if (!el) { log('skills skipped — input #skills--skills not found'); break }
       log(`skill "${skill}" detected (searching)`)
       await typeQuery(el, skill)
-      // Enter commits the query and kicks off the remote search.
       el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', keyCode: 13, bubbles: true, cancelable: true }))
       el.dispatchEvent(new KeyboardEvent('keypress', { key: 'Enter', keyCode: 13, bubbles: true, cancelable: true }))
       el.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', keyCode: 13, bubbles: true }))
@@ -64,7 +68,6 @@ export const multiselectStrategy: FillStrategy = {
         results.push({ role: 'skills', status: 'skipped', detail: skill })
         continue
       }
-      // Click the inner promptOption node (React listens for pointer events).
       const target =
         first.querySelector<HTMLElement>('[data-automation-id="promptOption"]') ??
         first.querySelector<HTMLElement>('[data-automation-id="promptLeafNode"]') ??
@@ -77,5 +80,8 @@ export const multiselectStrategy: FillStrategy = {
     }
 
     return results
+  },
+  isEmpty(c) {
+    return !c.handle.closest('[data-automation-id="multiSelectContainer"]')?.querySelector('[data-automation-id="selectedItem"]')
   },
 }

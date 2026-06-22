@@ -11,8 +11,8 @@
 // prefers the matching tense (current/previous from the experience entry) and employee over
 // contractor, with sensible fallbacks.
 
-import { reactSelectLabel } from '../../semantic'
-import type { FillRequest } from '../../types'
+import { reactSelectLabel } from './labels'
+import type { FillRequest } from '../types'
 
 export interface WorkedHereState {
   worked: boolean

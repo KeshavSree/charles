@@ -1,9 +1,9 @@
-// Engine entry point. esbuild bundles this (with all strategies/detectors and the
-// imported FIELDS registry) into dist/content/engine.js. The popup injects that file
+// Engine entry point. esbuild bundles this (with the registry, widgets, and the field
+// catalog) into dist/content/engine.js. The popup injects that file
 // on Fill click, which runs this IIFE and attaches the engine to globalThis. A tiny
 // follow-up executeScript func then calls globalThis.__charlesEngine.run(request).
 
-import { run } from './dispatcher'
+import { run } from './runtime'
 import type { FillRequest, FillSummary } from './types'
 
 declare global {
