@@ -44,8 +44,7 @@ export const checkboxGroupWidget: Widget = {
     log(`${input.field} filled ✓ = "${trunc(controlLabel(target))}"`)
     return [{ role: input.field, status: 'filled' }]
   },
-  // The old review pass had no checkbox-group branch (default: not "empty").
-  isEmpty() {
-    return false
+  isEmpty(c) {
+    return !Array.from(c.handle.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')).some((cb) => cb.checked)
   },
 }
