@@ -48,7 +48,7 @@ export const fileWidget: Widget = {
       return [{ role: 'resume', status: 'failed' }]
     }
   },
-  isEmpty() {
-    return false
+  isEmpty(c) {
+    return !((c.handle as HTMLInputElement).files?.length)
   },
 }

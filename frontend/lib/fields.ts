@@ -138,8 +138,8 @@ export const FIELDS: FieldDef[] = [
     ],
   },
   {
-    // Derived from the résumé's most-recent grad month+year, normalized to a June/December
-    // term (computed in the popup).
+    // Derived from the résumé's most-recent grad month + year as "Month YYYY" (e.g.
+    // "May 2028"), computed in the popup.
     key: 'grad_date', label: 'Expected graduation (auto)', type: 'string-enum', defaultValue: null, required: false, derived: true,
   },
   {
@@ -148,6 +148,12 @@ export const FIELDS: FieldDef[] = [
     key: 'current_employer', label: 'Current/Previous Employer (auto)', type: 'text', defaultValue: null, required: false, derived: true,
   },
   { key: 'current_title', label: 'Current/Previous Job Title (auto)', type: 'text', defaultValue: null, required: false, derived: true },
+  {
+    // Derived from the résumé's most-recent school — computed in the popup. Fills a standalone
+    // "What college/university do you attend?" question (text input OR dropdown); the
+    // repeatable education *section* is handled separately by the education widget.
+    key: 'school', label: 'College/University (auto)', type: 'text', defaultValue: null, required: false, derived: true,
+  },
   { key: 'twitter', label: 'Twitter', type: 'text', inputType: 'url', defaultValue: null, required: false },
   { key: 'facebook', label: 'Facebook', type: 'text', inputType: 'url', defaultValue: null, required: false },
 ]

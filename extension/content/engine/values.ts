@@ -31,17 +31,20 @@ const MONTHS: Record<string, number> = {
   jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6,
   jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12,
 }
+const MONTH_NAMES = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
+]
 
 /**
- * "When do you expect to graduate?" — from the most-recent education's grad month+year,
- * normalized to the nearest June/December term (e.g. "May 2028" → "June 2028"). Null if no
- * grad year.
+ * "When do you expect to graduate?" — the most-recent education's actual grad month + year as
+ * a full "Month YYYY" (e.g. "May 2028"), so it lands directly on a per-month dropdown. Falls
+ * back to the year alone when no month is parsed; null if there's no grad year.
  */
 export function deriveGradDate(education: EducationEntry[]): string | null {
   const edu = latestEducation(education)
   const year = edu?.grad_year?.trim()
   if (!year) return null
   const m = edu?.grad_month ? MONTHS[edu.grad_month.slice(0, 3).toLowerCase()] : undefined
-  const term = m === undefined ? 'June' : (m >= 3 && m <= 8 ? 'June' : 'December')
-  return `${term} ${year}`
+  return m ? `${MONTH_NAMES[m - 1]} ${year}` : year
 }

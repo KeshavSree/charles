@@ -55,15 +55,15 @@ export interface FillContext {
 
 export interface FillSummary {
   filled: number
-  skipped: number
   filledFields: string[]
-  skippedFields: string[]
   /** Filled with a best-guess default — the user should verify these on the form. */
   doubleCheckFields: string[]
-  /** Post-fill review: required empty fields on the page (outlined red). */
-  needsYou: string[]
-  /** Post-fill review: fields we had an answer for but couldn't fill (outlined amber). */
+  /** Every empty field on the page, by its question text (the "Not filled" list). */
+  unanswered: string[]
+  /** The amber subset of unanswered — fields we had an answer for but couldn't fill. */
   didntLand: string[]
+  /** role → on-page question text for each detected field (for filled/double-check chips). */
+  questions: Record<string, string>
 }
 
 // ---------------------------------------------------------------------------

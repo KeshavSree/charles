@@ -115,6 +115,7 @@ function buildFillRequest(info: UserInfo, profile: ResumeProfile | null): FillRe
   // engine like any stored value. Replaces the old fill-time VALUE_DERIVATIONS.
   values['degree_pursuing'] = deriveDegreePursuing(education)
   values['grad_date'] = deriveGradDate(education)
+  values['school'] = education[0]?.institution ?? ''
   const skills = (merged.skills ?? []).filter(Boolean)
   const websites = (merged.websites ?? []).filter(Boolean)
 
@@ -157,22 +158,23 @@ function setStatus(msg: string, type: 'ok' | 'err' | '' = '') {
   el.className = type
 }
 
-function showDetails(filledFields: string[], skippedFields: string[], doubleCheckFields: string[], needsYou: string[], didntLand: string[]) {
+function showDetails(filledFields: string[], doubleCheckFields: string[], unanswered: string[], didntLand: string[], questions: Record<string, string>) {
   const el = document.getElementById('details')!
   el.innerHTML = ''
 
-  // Post-fill review summary — the per-field detail lives as outlines on the page.
-  if (needsYou.length || didntLand.length) {
-    const summary = document.createElement('div')
-    const parts: string[] = []
-    if (needsYou.length) parts.push(`🔴 ${needsYou.length} need you`)
-    if (didntLand.length) parts.push(`🟠 ${didntLand.length} didn't land`)
-    summary.textContent = `On the form: ${parts.join(' · ')} — outlined in the tab`
-    summary.style.cssText = 'font-size:11px; color:#e2e8f0; margin-bottom:10px; padding:6px 8px; background:#1a1a2e; border:1px solid #2d2d4e; border-radius:4px;'
-    el.appendChild(summary)
+  // Filled / double-check chips are role-keyed → show the on-page question text, falling back
+  // to the catalog label then the raw role. Unanswered chips are already question text.
+  const chipText = (k: string) => questions[k] ?? FIELD_LABELS[k] ?? k
+
+  // Amber note: fields we had an answer for but couldn't fill (outlined amber on the page).
+  if (didntLand.length) {
+    const note = document.createElement('div')
+    note.textContent = `🟠 ${didntLand.length} had an answer but didn't land — outlined amber in the tab`
+    note.style.cssText = 'font-size:11px; color:#e2e8f0; margin-bottom:10px; padding:6px 8px; background:#1a1a2e; border:1px solid #2d2d4e; border-radius:4px;'
+    el.appendChild(note)
   }
 
-  function renderSection(heading: string, cls: string, fields: string[], chipCls: string) {
+  function renderSection(heading: string, cls: string, labels: string[], chipCls: string) {
     const section = document.createElement('div')
     section.className = 'detail-section'
     const h = document.createElement('div')
@@ -181,52 +183,47 @@ function showDetails(filledFields: string[], skippedFields: string[], doubleChec
     section.appendChild(h)
     const list = document.createElement('div')
     list.className = 'chip-list'
-    fields.forEach((k) => {
+    labels.forEach((t) => {
       const chip = document.createElement('span')
       chip.className = `chip ${chipCls}`
-      chip.textContent = FIELD_LABELS[k] ?? k
+      chip.textContent = t
       list.appendChild(chip)
     })
     section.appendChild(list)
     el.appendChild(section)
   }
 
-  if (filledFields.length) renderSection(`✓ Filled (${filledFields.length})`, 'ok', filledFields, 'chip-ok')
-  if (skippedFields.length) renderSection(`✗ Not filled (${skippedFields.length})`, 'err', skippedFields, 'chip-err')
-  if (doubleCheckFields.length) renderSection(`⚠ Double-check (${doubleCheckFields.length})`, 'warn', doubleCheckFields, 'chip-warn')
+  if (filledFields.length) renderSection(`✓ Filled (${filledFields.length})`, 'ok', filledFields.map(chipText), 'chip-ok')
+  if (unanswered.length) renderSection(`✗ Not filled (${unanswered.length})`, 'err', unanswered, 'chip-err')
+  if (doubleCheckFields.length) renderSection(`⚠ Double-check (${doubleCheckFields.length})`, 'warn', doubleCheckFields.map(chipText), 'chip-warn')
 }
 
-// executeScript with allFrames returns one InjectionResult per frame. The real form
-// lives in exactly one frame — often a cross-origin iframe (e.g. a Greenhouse embed) —
-// while every other frame (the wrapper page, ad/analytics iframes) detects nothing and
-// reports every request value as "skipped". Merge across frames: a role filled in ANY
-// frame counts as filled and so isn't skipped, dropping that per-frame skipped noise.
+// executeScript with allFrames returns one InjectionResult per frame. The real form lives in
+// exactly one frame — often a cross-origin iframe (e.g. a Greenhouse embed) — and the others
+// detect nothing. Merge across frames by union: each list/map is contributed by whichever
+// frame held the form; non-form frames contribute nothing.
 function mergeSummaries(summaries: FillSummary[]): FillSummary {
   const filledFields = new Set<string>()
   const doubleCheckFields = new Set<string>()
-  const skippedFields = new Set<string>()
-  const needsYou: string[] = []
-  const didntLand: string[] = []
+  const unanswered = new Set<string>()
+  const didntLand = new Set<string>()
+  const questions: Record<string, string> = {}
   let filled = 0
   for (const s of summaries) {
     filled += s.filled
     s.filledFields.forEach((f) => filledFields.add(f))
     s.doubleCheckFields.forEach((f) => doubleCheckFields.add(f))
-    s.skippedFields.forEach((f) => skippedFields.add(f))
-    needsYou.push(...s.needsYou)
-    didntLand.push(...s.didntLand)
+    s.unanswered.forEach((q) => unanswered.add(q))
+    s.didntLand.forEach((q) => didntLand.add(q))
+    for (const [k, v] of Object.entries(s.questions)) if (!questions[k]) questions[k] = v
   }
-  // A role filled (or flagged double-check) in any frame is not skipped overall.
-  for (const f of filledFields) skippedFields.delete(f)
-  for (const f of doubleCheckFields) skippedFields.delete(f)
   return {
     filled,
-    skipped: skippedFields.size,
     filledFields: [...filledFields],
-    skippedFields: [...skippedFields],
     doubleCheckFields: [...doubleCheckFields],
-    needsYou,
-    didntLand,
+    unanswered: [...unanswered],
+    didntLand: [...didntLand],
+    questions,
   }
 }
 
@@ -312,10 +309,10 @@ async function init() {
         .filter((s): s is FillSummary => s != null)
       const summary = mergeSummaries(summaries)
       setStatus(
-        `Filled ${summary.filled} field(s)${summary.skipped ? `, skipped ${summary.skipped}` : ''}`,
+        `Filled ${summary.filled} field(s)${summary.unanswered.length ? ` · ${summary.unanswered.length} unanswered` : ''}`,
         summary.filled > 0 ? 'ok' : 'err',
       )
-      showDetails(summary.filledFields, summary.skippedFields, summary.doubleCheckFields, summary.needsYou, summary.didntLand)
+      showDetails(summary.filledFields, summary.doubleCheckFields, summary.unanswered, summary.didntLand, summary.questions)
     } catch (err) {
       setStatus(err instanceof Error ? err.message : String(err), 'err')
     } finally {

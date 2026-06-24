@@ -69,6 +69,37 @@ export function reactSelectLabel(input: Element): string {
   return fieldLabel(input)
 }
 
+/**
+ * Best human-readable question/label for a detected element, for DISPLAY in the popup
+ * (case-preserved, whitespace-collapsed, length-capped). Unlike fieldLabel (lowercased, for
+ * matching), this targets the question a user would read: aria-labelledby → aria-label →
+ * label[for] → the enclosing fieldset's legend (grouped choice questions) → wrapping label →
+ * placeholder. Returns '' when nothing resolves (callers fall back to the field's catalog label).
+ */
+export function displayLabel(el: Element): string {
+  const clean = (s: string | null | undefined): string => (s ?? '').replace(/\s+/g, ' ').trim()
+  const cap = (s: string): string => (s.length > 70 ? `${s.slice(0, 67)}…` : s)
+
+  const lby = el.getAttribute('aria-labelledby')
+  if (lby) {
+    const t = clean(lby.split(/\s+/).map((id) => document.getElementById(id)?.textContent ?? '').join(' '))
+    if (t) return cap(t)
+  }
+  const aria = clean(el.getAttribute('aria-label'))
+  if (aria) return cap(aria)
+  if (el.id) {
+    const t = clean(document.querySelector(`label[for="${CSS.escape(el.id)}"]`)?.textContent)
+    if (t) return cap(t)
+  }
+  const legend = clean(el.closest('fieldset')?.querySelector('legend')?.textContent)
+  if (legend) return cap(legend)
+  const wrap = clean(el.closest('label')?.textContent)
+  if (wrap) return cap(wrap)
+  const ph = clean(el.getAttribute('placeholder'))
+  if (ph) return cap(ph)
+  return ''
+}
+
 /** Combined group label for a set of radios (legend → role group aria → name). */
 export function getGroupLabel(radios: HTMLInputElement[]): string {
   for (const r of radios) {

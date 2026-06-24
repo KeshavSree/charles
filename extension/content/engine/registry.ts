@@ -51,6 +51,7 @@ const current_employer = /\bemployer\b/i
 const current_title = /job.?title|(current|previous|most.?recent).{0,20}\btitle\b/i
 const twitter = /twitter/i
 const facebook = /facebook/i
+const school = /college|university|institution|\bschool\b/i
 
 // Workday combobox aid patterns (matched against the container's data-automation-id).
 const countryAid = /\bcountry\b(?!Phone|Region)/i
@@ -74,7 +75,7 @@ const f1_student = /f-?1 student|f-?1 visa/i
 const enrolled_returning = /return to the program|will return.*upon completion|enrolled.*will return/i
 const privacy_ack = /applicant privacy|privacy ack|privacy.?(statement|policy|notice)|acknowledg.*privacy/i
 const degree_pursuing = /degree are you (currently )?pursuing|what degree.*pursuing|degree.*currently pursuing/i
-const grad_date = /expect to graduate|graduate or complete your program|when do you expect to (graduate|complete)/i
+const grad_date = /expect.{0,4}graduat|graduation date|anticipated graduation|graduate or complete your program|when do you (expect to )?(graduate|complete)/i
 const workedHereRe = /have you (ever )?worked (at|for)|previously (worked|employed)|former employee/i
 
 // Catch-all for widgets whose single field carries no field text (resume input, the
@@ -104,7 +105,7 @@ const textLeaf = (): Leaf => ({
   widget: textWidget,
   fields: {
     full_name, first_name, last_name, chosen_name, pronouns, email, phone, linkedin,
-    address, city, state, zip_code, country, current_employer, current_title, twitter, facebook,
+    address, city, state, zip_code, country, current_employer, current_title, school, twitter, facebook,
   },
 })
 const radioLeaf = (): Leaf => ({ widget: radioWidget, fields: { ...GROUP_ALL } })
@@ -128,7 +129,13 @@ export const REGISTRY: Record<Ats, Record<string, Leaf>> = {
     // selectors fill via matchOption's dial-code tier (no special-casing).
     dropdown: {
       widget: reactSelectWidget,
-      fields: { ...GROUP_ALL, worked_here: workedHereLeafRule, country, city: { match: city, fillOpts: { fuzzy: true } } },
+      fields: {
+        ...GROUP_ALL, worked_here: workedHereLeafRule, country,
+        city: { match: city, fillOpts: { fuzzy: true } },
+        // Standalone "What college/university do you attend?" dropdown. Reject the education
+        // section's school--N/degree--N selects (handled by the education widget).
+        school: { match: school, reject: (c) => /^(school|degree)--/.test(c.handle.id), fillOpts: { fuzzy: true } },
+      },
     },
     education: { widget: educationWidget, fields: { education: always } },
     radio: radioLeaf(),

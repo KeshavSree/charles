@@ -47,7 +47,10 @@ export const dateWidget: Widget = {
     log(`${input.field} filled ✓ = ${mm}/${dd}/${yyyy} (today)`)
     return [{ role: input.field, status: 'filled' }]
   },
-  isEmpty() {
-    return false
+  isEmpty(c) {
+    const parts = ['Month', 'Day', 'Year'].map(
+      (p) => (c.handle.querySelector<HTMLInputElement>(`[data-automation-id$="dateSection${p}-input"]`)?.value ?? '').trim(),
+    )
+    return parts.every((v) => !v)
   },
 }

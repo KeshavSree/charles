@@ -4,7 +4,8 @@
 
 import { FIELDS } from '../../../frontend/lib/fields'
 import { REGISTRY } from './registry'
-import { runReview, type ReviewItem } from './reviewPass'
+import { runReview } from './reviewPass'
+import { displayLabel } from './helpers/labels'
 import { log, wait } from './dom'
 import type { Ats, Candidate, FieldRule, FillInput, FillRequest, FillResult, FillSummary, LeafRule, Widget } from './types'
 
@@ -56,6 +57,9 @@ export async function run(req: FillRequest, onProgress?: (msg: string) => void):
   // box out of the plain-text widget (those widgets are listed earlier in the registry).
   const detected: Detected[] = []
   const claimed: HTMLElement[] = []
+  // role → the on-page question text, captured at detection for the popup's filled/not-filled
+  // display (more useful than the internal field key).
+  const questions: Record<string, string> = {}
   if (leaves) {
     for (const widgetName of Object.keys(leaves)) {
       const leaf = leaves[widgetName]
@@ -68,6 +72,10 @@ export async function run(req: FillRequest, onProgress?: (msg: string) => void):
         }
         if (!field) continue
         claimed.push(c.handle)
+        if (!questions[field]) {
+          const q = displayLabel(c.handle)
+          if (q) questions[field] = q
+        }
         const rule = asRule(leaf.fields[field])
         let value: string | boolean | null
         let opts = rule.fillOpts ?? {}
@@ -101,21 +109,24 @@ export async function run(req: FillRequest, onProgress?: (msg: string) => void):
     }
   }
 
-  // Summary — identical shape/logic to the old dispatcher.
   const allFilled = Array.from(new Set(results.filter((r) => r.status === 'filled').map((r) => r.role)))
   const filled = results.filter((r) => r.status === 'filled').length
   const doubleCheckFields = allFilled.filter((r) => DOUBLE_CHECK_ROLES.has(r))
   const filledFields = allFilled.filter((r) => !DOUBLE_CHECK_ROLES.has(r))
-  const expectedKeys = Object.entries(req.values)
-    .filter(([, v]) => v !== null && v !== undefined && v !== '')
-    .map(([k]) => k)
-  const skippedFields = expectedKeys.filter((k) => !allFilled.includes(k))
+
+  // Post-fill review: scan the whole page for empty fields (not just catalog-matched ones).
+  // `attempted` records, per detected field, whether we had a value (→ amber vs red).
+  const attempted = new Map<HTMLElement, boolean>()
+  for (const d of detected) {
+    const v = d.input.value
+    attempted.set(d.candidate.handle, v !== null && v !== undefined && v !== '')
+  }
+  const widgets = leaves ? Object.values(leaves).map((l) => l.widget) : []
 
   progress('reviewing...')
   await wait(400)
-  const reviewItems: ReviewItem[] = detected.map((d) => ({ role: d.field, widget: d.widget, candidate: d.candidate }))
-  const { needsYou, didntLand } = runReview(reviewItems, req)
+  const { unanswered, didntLand } = runReview(widgets, attempted)
 
-  log(`done — ${filled} filled | filled: [${filledFields.join(', ')}] | double-check: [${doubleCheckFields.join(', ')}] | skipped: [${skippedFields.join(', ')}] | needs-you: ${needsYou.length} | didn't-land: ${didntLand.length}`)
-  return { filled, skipped: skippedFields.length, filledFields, skippedFields, doubleCheckFields, needsYou, didntLand }
+  log(`done — ${filled} filled | filled: [${filledFields.join(', ')}] | double-check: [${doubleCheckFields.join(', ')}] | unanswered: ${unanswered.length} | didn't-land: ${didntLand.length}`)
+  return { filled, filledFields, doubleCheckFields, questions, unanswered, didntLand }
 }
