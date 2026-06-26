@@ -5,15 +5,30 @@
 //   boolean — a yes/no question. Match the option whose text STARTS WITH "Yes"/"No",
 //             so verbose labels like "Yes, I would consider…" hit but "Not sure" /
 //             "I am local…" don't.
-//   string  — four-tier preference: exact, then startsWith, then a normalized reverse
+//   string  — five-tier preference: exact, then startsWith, then a normalized reverse
 //             startsWith (the value contains the option text with collapsed spaces), then a
-//             dial-code-stripped tier. The reverse tier handles stored values longer/more
-//             specific than the on-screen option (e.g. "United States of America" vs an
-//             option labeled "United States", or an EEO value vs a "(United States…)"
-//             suffix). The dial-code tier handles phone country-code selectors whose options
-//             read "United States +1" — strip the trailing "+<code>" so the country value
-//             still matches. It's guarded to fire only when a dial code was present, so plain
-//             options are untouched.
+//             dial-code-stripped tier, then a month-term fallback. The reverse tier handles
+//             stored values longer/more specific than the on-screen option (e.g. "United
+//             States of America" vs "United States"). The dial-code tier handles phone
+//             country-code selectors ("United States +1"). The month-term tier handles a
+//             "Month YYYY" value (graduation date) against a coarse dropdown that only lists
+//             June/December markers — falling back to the nearest 6-month term. Exact still
+//             wins, so an every-month dropdown is unaffected.
+
+const MONTHS_IDX: Record<string, number> = {
+  jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6,
+  jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12,
+}
+
+// For a "Month YYYY" value with no exact option, match the nearest June/December term.
+function matchMonthTerm<T>(val: string, options: T[], norm: (o: T) => string): T | undefined {
+  const m = val.match(/^([a-z]{3,})\s+((?:19|20)\d{2})$/)
+  if (!m) return undefined
+  const idx = MONTHS_IDX[m[1].slice(0, 3)]
+  if (!idx) return undefined
+  const target = `${idx >= 3 && idx <= 8 ? 'june' : 'december'} ${m[2]}`
+  return options.find((o) => norm(o) === target || norm(o).startsWith(target))
+}
 
 /** Pick the option matching `value`, preferring stronger matches. Returns undefined if none. */
 export function matchOption<T>(
@@ -37,7 +52,8 @@ export function matchOption<T>(
     options.find((o) => {
       const s = stripDial(norm(o))
       return s !== norm(o) && (s === val || val.startsWith(s) || s.startsWith(val))
-    })
+    }) ??
+    matchMonthTerm(val, options, norm)
   )
 }
 

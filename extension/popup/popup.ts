@@ -45,7 +45,6 @@ function mergeForFill(info: UserInfo, profile: ResumeProfile | null): UserInfo {
     }
   }
   result.skills = info.skills ?? []
-  result.websites = info.websites ?? []
   return result as unknown as UserInfo
 }
 
@@ -117,7 +116,9 @@ function buildFillRequest(info: UserInfo, profile: ResumeProfile | null): FillRe
   values['grad_date'] = deriveGradDate(education)
   values['school'] = education[0]?.institution ?? ''
   const skills = (merged.skills ?? []).filter(Boolean)
-  const websites = (merged.websites ?? []).filter(Boolean)
+  // github/website are stored fields now (filled via the values loop). Workday's repeatable
+  // "Websites" section, if present, gets the explicit personal-site + GitHub URLs.
+  const websites = [merged.website, merged.github].filter((u): u is string => !!u)
 
   // Aggressive-fill settings live on UserInfo directly (not in the FIELDS-driven values).
   const aggressive = info.aggressive_fill ?? false

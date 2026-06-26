@@ -34,6 +34,9 @@ _MIGRATIONS = [
     "ALTER TABLE user_info ADD COLUMN disability_status VARCHAR(256)",
     "ALTER TABLE user_info ADD COLUMN chosen_name VARCHAR(128)",
     "ALTER TABLE user_info ADD COLUMN pronouns VARCHAR(64)",
+    "ALTER TABLE user_info ADD COLUMN github VARCHAR(256)",
+    "ALTER TABLE user_info ADD COLUMN website VARCHAR(256)",
+    "ALTER TABLE user_info ADD COLUMN job_alerts BOOLEAN",
 ]
 
 

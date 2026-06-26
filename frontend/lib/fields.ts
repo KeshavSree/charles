@@ -120,6 +120,7 @@ export const FIELDS: FieldDef[] = [
   { key: 'f1_student', label: 'Are you an F-1 student?', type: 'bool', defaultValue: null, required: false },
   { key: 'enrolled_returning', label: 'Enrolled and returning to school after the internship?', type: 'bool', defaultValue: null, required: false },
   { key: 'privacy_ack', label: 'Applicant Privacy Acknowledgement', type: 'bool', defaultValue: null, required: false, aggressive: true },
+  { key: 'job_alerts', label: 'Receive alerts for similar jobs?', type: 'bool', defaultValue: null, required: false, aggressive: true },
   {
     // Aggressive + derived: "Have you worked at <company>?" — the engine derives the answer
     // from the question's company + the user's company list (no stored value).
@@ -156,6 +157,8 @@ export const FIELDS: FieldDef[] = [
   },
   { key: 'twitter', label: 'Twitter', type: 'text', inputType: 'url', defaultValue: null, required: false },
   { key: 'facebook', label: 'Facebook', type: 'text', inputType: 'url', defaultValue: null, required: false },
+  { key: 'github', label: 'GitHub', type: 'text', inputType: 'url', defaultValue: null, required: false },
+  { key: 'website', label: 'Personal Website', type: 'text', inputType: 'url', defaultValue: null, required: false },
 ]
 
 // Explicit interface alongside the catalog — both live in one file.
@@ -189,24 +192,25 @@ export interface UserInfo {
   f1_student: boolean | null
   enrolled_returning: boolean | null
   privacy_ack: boolean | null
+  job_alerts: boolean | null
   worked_here: boolean | null
   degree_pursuing: string | null
   grad_date: string | null
   twitter: string | null
   facebook: string | null
-  // Aggressive-fill settings (not in FIELDS — like skills/websites).
+  github: string | null
+  website: string | null
+  // Aggressive-fill settings (not in FIELDS — like skills).
   aggressive_fill: boolean
   worked_companies: string[]
   skills: string[]
-  websites: string[]
 }
 
 export const EMPTY_USER_INFO: UserInfo = {
-  ...(Object.fromEntries(FIELDS.map((f) => [f.key, f.defaultValue])) as Omit<UserInfo, 'skills' | 'websites' | 'aggressive_fill' | 'worked_companies'>),
+  ...(Object.fromEntries(FIELDS.map((f) => [f.key, f.defaultValue])) as Omit<UserInfo, 'skills' | 'aggressive_fill' | 'worked_companies'>),
   aggressive_fill: false,
   worked_companies: [],
   skills: [],
-  websites: [],
 }
 
 export const FIELD_LABELS: Record<string, string> = {

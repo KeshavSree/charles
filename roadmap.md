@@ -21,17 +21,32 @@
 - resume parsing
 
 
-# main areas I can see people owning after first stuff is done:
-extension
-- auto scan js/agentic fill
-- add more supported application websites (workday, lever, greenhouse etc) 
-website
-- layout/ux
-if cli agent:
-- cli agent research
-job scanning
-job matching
-referral network
+# imminent task list (implement):
+- job matching algorithm 
+  - instead of 1 gauge, provide multiple for different facets
+  - 
+- actually good resume parser 
+  - less slop coded architecture, works on more resumes
+  - could just be some open source tool
+- better job scraping 
+  - less slop coded architecture, better/more data storage, access
+  - more job sites, but also the various githubs
+
+- AI for fields that cannot be reasonably filled programmatically (free response among other things)
+  - user writes sentiment, AI expands upon it option
+- ICIMS support
+- ashby support
+- real UI work website
+- real UI work extension
+- integrate Hackerrank open source resume grader
+
+
+# research items (define problem, evaluate usefulness, planning)
+- referral network
+- CLI based version? 
+- payment system
+- job recommendation based on resume evaluation (tinder)
+- refill for employers
 
 
 # Payment?
@@ -60,18 +75,16 @@ of course there are also field that the originally LLM scan didn't even find. th
 by human get placed in a data format that a coding agent can read, allowing us to *convert* unfamiliar fields to familiar fields, increasing speed/decreasing llm costs
 
 
-# The first month, 7/10/26 deadline, preferably earlier. Focus hard on the ATS stuff
-- Field Detection
-- orchestration layer (langgraph?)
-- Tool construction
-- Straight up Greenhouse support
-- Field promotion (unfamiliar->familiar)
 
-
-## Important engineering questions:
-- How can we detect as many fields as possible on a page?
-- How can we ensure the LLM reliably calls the tools? 
-- How can we construct each tool such that it has the highest chance of successfully interacting with the page?
-- How can we effectively convert data on unfamiliar fields to known fields (still have to deal with field matching)?
-
-
+# the quality over quantity angle
+- instead of focusing on 1 million jobs, focus on 
+  - A: Finding jobs that arent on job boards? Like theres always ppl hiring on social media and stuff
+  - B: ACTUALLY finding a good match for jobs based on more than skills, like aspirations, passions, and more
+    - What does this company care about?
+    - What do you care about?
+    - The "Narrative profile"
+  - C: taking the user past the application, all the way through to the interview. could include:
+    - kanban board for jobs, in each phase we provide different support to user
+    - better outreach after applying
+    - metrics tracking
+    - not only how to improve your resume, but how to ACTUALLY improve yourself
