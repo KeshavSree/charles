@@ -5,16 +5,29 @@
 // Ported from the old file-upload strategy + the detectors' file pass.
 
 import { base64ToFile, wait, log } from '../dom'
+import { fieldLabel } from '../helpers/labels'
 import type { Widget } from '../types'
+
+// id/name/aria + resolved label for a file input — used to tell résumé from cover letter.
+const fileContext = (el: Element): string =>
+  `${el.id} ${el.getAttribute('name') ?? ''} ${el.getAttribute('aria-label') ?? ''} ${fieldLabel(el)}`.toLowerCase()
+
+const isCoverLetter = (el: Element) => /cover[\s_-]*letter/.test(fileContext(el))
 
 export const fileWidget: Widget = {
   name: 'file',
   priority: 70,
   detect(doc) {
-    const input =
-      doc.querySelector<HTMLElement>('input[type="file"][data-automation-id="file-upload-input-ref"]') ??
-      doc.querySelector<HTMLElement>('input[type="file"]')
-    return input ? [{ handle: input }] : []
+    const inputs = Array.from(doc.querySelectorAll<HTMLElement>('input[type="file"]'))
+    if (!inputs.length) return []
+    // Workday's specific résumé input wins outright.
+    const wd = inputs.find((el) => el.getAttribute('data-automation-id') === 'file-upload-input-ref')
+    if (wd) return [{ handle: wd }]
+    // Prefer a clearly-résumé input; otherwise the first input that ISN'T a cover letter — so
+    // the résumé is never uploaded into the Cover Letter field.
+    const resume = inputs.find((el) => /resume|résumé|curriculum|\bcv\b/.test(fileContext(el)) && !isCoverLetter(el))
+    const chosen = resume ?? inputs.find((el) => !isCoverLetter(el)) ?? inputs[0]
+    return [{ handle: chosen }]
   },
   label() {
     return 'resume'

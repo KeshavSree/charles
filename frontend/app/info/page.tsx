@@ -276,15 +276,6 @@ export default function InfoPage() {
       <Section title="LINKS & SKILLS">
         {LINK_FIELDS.map(textField)}
         <div style={fullRow}>
-          <label style={labelStyle}>Websites</label>
-          <ChipInput
-            items={info.websites ?? []}
-            onChange={(s) => setInfo((prev) => ({ ...prev, websites: s }))}
-            disabled={loading}
-            placeholder="Add a URL, press Enter"
-          />
-        </div>
-        <div style={fullRow}>
           <label style={labelStyle}>Skills</label>
           <ChipInput
             items={info.skills ?? []}
