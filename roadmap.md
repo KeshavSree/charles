@@ -88,3 +88,8 @@ by human get placed in a data format that a coding agent can read, allowing us t
     - better outreach after applying
     - metrics tracking
     - not only how to improve your resume, but how to ACTUALLY improve yourself
+
+
+Which of these did you learn the most from
+Which of these is the most impressive thing you built?
+- Why do you think it is the most impressive?
