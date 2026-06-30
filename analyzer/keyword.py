@@ -198,30 +198,24 @@ def cluster_keywords(keywords: list[dict], threshold: float=0.82) -> list[dict]:
 
 
 def analyze_job_posting(job_description: str) -> list[dict]:
-    """Analyze a job posting and extract ranked keywords.
-
-    Args:
-        job_description: Raw job posting text
-
-    Returns:
-        List of ranked, clustered keywords with importance scores.
-    """
     text = preprocess_text(job_description)
 
-    # Split job posting into sections
-    entities_by_section = []
+    # split into sections
+    all_entities = []
+
     for line in text.split('\n'):
         section = detect_section(line)
+
         if section != 'unknown':
             entities = extract_entities(line, section)
-            entities_by_section.extend(entities)
+            all_entities.extend(entities)
 
-    # If no entities found by section headers, analyze entire text
-    if not entities_by_section:
-        entities_by_section = extract_entities(text, 'unknown')
+    # if no sections found, analyze entire text as one section
+    if not all_entities:
+        all_entities = extract_entities(text, 'unknown')
 
-    # Rank and cluster keywords
-    ranked = rank_keywords(text, entities_by_section)
+    # rank and cluster keywords
+    ranked = rank_keywords(text, all_entities)
     clustered = cluster_keywords(ranked)
 
     return clustered
