@@ -36,27 +36,62 @@ Copy `.env.example` to `.env`. All settings are optional — SQLite (`jobs.db`) 
 
 `api/app.py` mounts five routers under `/api`:
 
-- `jobs` — query scraped job listings
+- `jobs` — query stored postings (cursor-paginated; view filters)
 - `resumes` — upload PDF resumes; stored in `uploads/`
 - `profiles` — parsed profile derived from a resume (experience, education, contact)
 - `info` — singleton `UserInfo` record (all personal/EEO/contact fields a job form might ask)
-- `scraper` — trigger a manual scrape run
+- `scanner` — ingest-filter config, tracked companies, run/preview, run history, board health
 
 `api/schemas.py` is the single source of truth for `UserInfo` fields. `storage/models.py` mirrors it as a SQLAlchemy model. Adding a field means one line in each.
 
 ### Storage
 
-- `storage/models.py` — ORM models: `Job`, `Resume`, `ResumeSection`, `Profile`, `ProfileExperience`, `ProfileEducation`, `UserInfo`
+- `storage/models.py` — ORM models: `Job`, `TrackedCompany`, `ScanConfig`, `ScanRun`, `BoardHealth`, `Resume`, `ResumeSection`, `Profile`, `ProfileExperience`, `ProfileEducation`, `UserInfo`
 - `storage/db.py` — async engine + session factory; `create_tables()` is idempotent
-- `storage/repository.py` — `upsert_jobs()`, `query_jobs()`, `generate_profile_from_resume()`. Dialect detected at runtime for SQLite/PostgreSQL compatibility
+- `storage/repository.py` — `persist_postings()` (upsert + lifecycle), `mark_delisted()`, scan config / tracked company / run / health accessors, `generate_profile_from_resume()`
 
-### Scraper
+### Scanner
 
-`scrapers/` — Greenhouse, Lever, Ashby scrapers. Each self-registers via `@register("source_name")` in `scrapers/registry.py`. Adding a new ATS:
+`scanner/` — replaces the old `scrapers/` package, `filters.py` and `companies.yaml`.
+A Python port of the career-ops scanning engine, backed by the database instead of
+flat files. See `docs/scanner-port-plan.md` for the full map.
 
-1. Create `scrapers/<ats>.py` extending `BaseScraper`, implement `async def scrape(self, company: str) -> list[JobPosting]`
-2. Import it in `scheduler.py`
-3. Add entries under the new source key in `companies.yaml`
+Three discovery modes over one engine:
+
+- **tracked** — poll the boards of companies in the `tracked_companies` table.
+- **directory** — walk public per-ATS company directories (external dataset, 24h
+  cached). No coverage ceiling, so the freshness gate is mandatory.
+- **seeds** — probe VC portfolio companies (YC, a16z) for an ATS board.
+
+Key modules:
+
+- `scanner/registry.py` — auto-discovers `scanner/providers/*.py` (skipping `_`-prefixed),
+  alphabetically so `detect()` priority is deterministic. **Adding an ATS = dropping in a
+  file.** A company is identified by its careers URL; the provider derives its own API
+  endpoint via `detect()`, so there is no board-token guessing.
+- `scanner/http.py` — timeouts, UA, and **`follow_redirects=False`**. Combined with each
+  provider's host allowlist this guarantees a request cannot leave the allowlisted host.
+  Not optional — it is the SSRF boundary.
+- `scanner/filters/` — the ingest filter stack (title, location, content, visa, salary,
+  dates, tier), all pure and config-driven. `chain.py` applies them in order with
+  per-stage counters and has two profiles: `tracked` (full) and `reverse` (short chain
+  with a mandatory freshness gate).
+- `scanner/runner.py` / `service.py` — orchestration and DB glue.
+- `scanner/directory.py`, `scanner/seeds.py` — the reverse-discovery sources. Slugs come
+  from untrusted datasets, so `SLUG_RE` + `entry_on_host()` gate every constructed URL.
+
+**Two filter layers, do not confuse them:**
+
+- **Ingest filters** (`ScanConfig` table, edited at `/scanner`) decide what is ever
+  written. Destructive — use `POST /api/scanner/preview` to dry-run before saving.
+- **View filters** (`/api/jobs` query params) only narrow what is already stored.
+
+Job lifecycle: `first_seen_at` is immutable, `last_seen_at` refreshes each run, and
+postings that vanish from a board **that returned successfully** become `delisted`. A
+board that errors never delists anything.
+
+`ScanRun` holds the per-stage funnel; `BoardHealth` holds per-company status plus a
+consecutive-failure streak, so a wrong careers URL surfaces instead of 404ing silently.
 
 ### Resume parser
 
@@ -64,7 +99,7 @@ Copy `.env.example` to `.env`. All settings are optional — SQLite (`jobs.db`) 
 
 ### Frontend (Next.js)
 
-`frontend/app/` pages: `/jobs`, `/resumes`, `/info`. Shares `frontend/lib/fields.ts` with the extension — the canonical list of fillable fields and their metadata.
+`frontend/app/` pages: `/jobs`, `/scanner`, `/resumes`, `/info`. Shares `frontend/lib/fields.ts` with the extension — the canonical list of fillable fields and their metadata.
 
 ### Chrome extension
 

@@ -3,49 +3,24 @@ from __future__ import annotations
 import asyncio
 import logging
 
-import httpx
-import yaml
 from apscheduler.schedulers.blocking import BlockingScheduler
 
-import scrapers.ashby  # noqa: F401 — triggers @register
-import scrapers.greenhouse  # noqa: F401 — triggers @register
-import scrapers.lever  # noqa: F401 — triggers @register
 from config import Settings
-from filters import is_technical
-from scrapers.registry import get_scraper
-from storage.db import create_tables, get_session
-from storage.repository import upsert_jobs
+from scanner.service import run_scheduled_scan
+from storage.db import create_tables
 
 logger = logging.getLogger(__name__)
 
 
-def _load_companies(path: str = "companies.yaml") -> dict[str, list[str]]:
-    with open(path) as f:
-        return yaml.safe_load(f)
+async def run_all_scrapers() -> None:
+    """Scan every enabled tracked company and persist the results.
 
-
-async def run_all_scrapers(companies_path: str = "companies.yaml") -> None:
-    """Scrape all configured companies and persist results."""
+    Targets come from the `tracked_companies` table rather than a YAML file — a
+    company is identified by its careers URL, and the provider registry resolves the
+    ATS itself. A wrong URL surfaces in board health instead of 404ing silently.
+    """
     await create_tables()
-    companies = _load_companies(companies_path)
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        for source, company_list in companies.items():
-            for company in company_list:
-                try:
-                    scraper = get_scraper(source, client)
-                    logger.info("Scraping %s/%s ...", source, company)
-                    postings = await scraper.scrape(company)
-                    postings = [p for p in postings if is_technical(p.title)]
-                    async with get_session() as session:
-                        await upsert_jobs(session, postings)
-                    logger.info("  -> %d jobs for %s/%s", len(postings), source, company)
-                except httpx.HTTPStatusError as e:
-                    if e.response.status_code == 404:
-                        logger.info("%s jobs not found on %s", company.title(), source.title())
-                    else:
-                        logger.warning("HTTP %d scraping %s/%s", e.response.status_code, source, company)
-                except Exception:
-                    logger.exception("Error scraping %s/%s", source, company)
+    await run_scheduled_scan()
 
 
 def start_scheduler(settings: Settings) -> None:
@@ -59,7 +34,7 @@ def start_scheduler(settings: Settings) -> None:
         replace_existing=True,
         max_instances=1,
     )
-    logger.info("Running initial scrape...")
+    logger.info("Running initial scan...")
     asyncio.run(run_all_scrapers())
-    logger.info("Initial scrape complete. Scheduler started.")
+    logger.info("Initial scan complete. Scheduler started.")
     scheduler.start()

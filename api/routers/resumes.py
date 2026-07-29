@@ -89,6 +89,9 @@ async def upload_resume(
     from parser.pdf import extract_text
     from parser.sections import detect_sections
 
+    # Parse + profile generation are one atomic unit with the upload: any failure
+    # rolls the whole thing back and surfaces loudly rather than leaving a
+    # half-parsed résumé behind.
     try:
         raw_text = extract_text(str(file_path))
         sections = detect_sections(raw_text)
@@ -98,15 +101,12 @@ async def upload_resume(
                 section_type=section_type,
                 content=content,
             ))
-    except Exception:
-        pass  # parsing failure must not block the upload
-
-    await session.commit()
-
-    try:
+        await session.flush()
         await generate_profile_from_resume(session, resume_id)
     except Exception:
-        _log.warning("Profile generation failed for resume %s", resume_id, exc_info=True)
+        _log.error("Résumé upload failed to parse/profile for %s", resume_id, exc_info=True)
+        file_path.unlink(missing_ok=True)
+        raise HTTPException(status_code=500, detail="Could not parse the uploaded résumé")
 
     return {"id": resume_id}
 

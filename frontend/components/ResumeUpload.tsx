@@ -1,6 +1,6 @@
 'use client'
-import { useRef, useState } from 'react'
-import { uploadResume } from '@/lib/api'
+import { useRef } from 'react'
+import { useResumeUpload } from '@/lib/useResumeUpload'
 
 interface Props {
   onUploaded: (id: string) => void
@@ -8,21 +8,7 @@ interface Props {
 
 export default function ResumeUpload({ onUploaded }: Props) {
   const inputRef = useRef<HTMLInputElement>(null)
-  const [uploading, setUploading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  async function handleFile(file: File) {
-    setError(null)
-    setUploading(true)
-    try {
-      const { id } = await uploadResume(file)
-      onUploaded(id)
-    } catch {
-      setError('Upload failed. Make sure it is a PDF.')
-    } finally {
-      setUploading(false)
-    }
-  }
+  const { uploading, error, upload: handleFile } = useResumeUpload(onUploaded)
 
   return (
     <div>
