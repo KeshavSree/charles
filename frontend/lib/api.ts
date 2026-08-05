@@ -3,7 +3,7 @@
 export interface Job {
   id: string
   provider_id: string
-  discovery: string
+  source_id: string
   company: string
   title: string
   url: string
@@ -33,6 +33,7 @@ export interface JobFilters {
   companies: string[]
   providers: string[]
   tiers: string[]
+  sources: string[]
 }
 
 export interface JobsParams {
@@ -40,10 +41,10 @@ export interface JobsParams {
   q?: string
   company?: string
   provider_id?: string
+  source_id?: string
   tier?: string
   location?: string
   status?: string
-  discovery?: string
   posted_after?: string
   salary_min?: number
   trust_min?: number
@@ -59,6 +60,27 @@ export async function fetchJobs(params: JobsParams = {}): Promise<JobsPage> {
   })
   const res = await fetch(`/api/jobs?${q}`)
   if (!res.ok) throw new Error('Failed to fetch jobs')
+  return res.json()
+}
+
+/** Rejects a posting so it stops appearing in the list, surviving future scans.
+ *  `restore` puts it back to active. */
+export async function dismissJob(jobId: string, restore = false): Promise<Job> {
+  const res = await fetch(`/api/jobs/${jobId}/dismiss${restore ? '?restore=true' : ''}`, {
+    method: 'POST',
+  })
+  if (!res.ok) throw new Error('Failed to dismiss job')
+  return res.json()
+}
+
+/** Deletes the jobs matching `params`, except any in the pipeline. Not undoable. */
+export async function purgeListedJobs(params: JobsParams = {}): Promise<{ deleted: number }> {
+  const q = new URLSearchParams()
+  Object.entries(params).forEach(([k, v]) => {
+    if (v !== undefined && v !== '' && v !== null) q.set(k, String(v))
+  })
+  const res = await fetch(`/api/jobs/purge?${q}`, { method: 'POST' })
+  if (!res.ok) throw new Error('Failed to purge jobs')
   return res.json()
 }
 
@@ -79,15 +101,12 @@ export interface ScanConfig {
   visa_filter: { enabled?: boolean; require_mention?: boolean } | null
   salary_filter: { min?: number; max?: number; currency?: string } | null
   trust_filter: { enabled?: boolean } | null
-  skip_tiers: string[] | null
+  /** Tiers to KEEP. Empty means every tier passes. */
+  seniority_tiers: string[] | null
   max_posting_age_days: number | null
   blocked_companies: string[] | null
   company_aliases: Record<string, string[]> | null
-  since_days: number
   include_undated: boolean
-  ats_sources: string[] | null
-  limit_per_ats: number | null
-  shuffle: boolean
   concurrency: number
 }
 
@@ -110,7 +129,6 @@ export interface ScanCounters {
   filtered_title: number
   filtered_tier: number
   filtered_location: number
-  filtered_posting_age: number
   filtered_posted_date: number
   filtered_salary: number
   filtered_content: number
@@ -123,9 +141,10 @@ export interface ScanCounters {
 
 export interface ScanRun extends ScanCounters {
   id: number
+  drops?: DropBreakdown
   started_at: string
   finished_at: string | null
-  mode: string
+  source_id: string
   status: string
   dry_run: boolean
   companies: number
@@ -190,6 +209,12 @@ export async function fetchProviders(): Promise<string[]> {
   return (await res.json()).providers
 }
 
+export async function purgeJobs(): Promise<{ deleted: number }> {
+  const res = await fetch('/api/scanner/purge', { method: 'POST' })
+  if (!res.ok) throw new Error('Purge failed')
+  return res.json()
+}
+
 export async function fetchRuns(): Promise<ScanRun[]> {
   const res = await fetch('/api/scanner/runs?limit=20')
   if (!res.ok) throw new Error('Failed to fetch runs')
@@ -202,27 +227,86 @@ export async function fetchBoardHealth(): Promise<{ boards: BoardHealthRow[]; fa
   return res.json()
 }
 
+/** One row per source that ran. `all: true` runs every enabled source. */
+/** Per stage, what its drops group by and the most common values. */
+export interface DropBreakdown {
+  [stage: string]: { by: string; items: { label: string; count: number }[] }
+}
+
+export interface SourceRun {
+  source_id: string
+  label?: string
+  counters: ScanCounters
+  drops?: DropBreakdown
+  added: number
+  refreshed: number
+  delisted: number
+  errors?: { company: string; error: string; kind?: string }[]
+  companies_scanned?: number
+  companies_available?: number
+  cap_hit?: boolean
+  error?: string
+}
+
+export interface ScannerSource {
+  id: string
+  label: string
+  profile: 'tracked' | 'reverse'
+  enabled: boolean
+  settings: Record<string, unknown>
+  last_run: {
+    started_at: string
+    status: string
+    found: number
+    kept: number
+    new_added: number
+    errors: number
+  } | null
+}
+
+export async function fetchSources(): Promise<ScannerSource[]> {
+  const res = await fetch('/api/scanner/sources')
+  if (!res.ok) throw new Error('Failed to fetch sources')
+  return res.json()
+}
+
+export async function saveSource(
+  id: string,
+  body: { enabled?: boolean; settings?: Record<string, unknown> },
+): Promise<ScannerSource> {
+  const res = await fetch(`/api/scanner/sources/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) throw new Error('Failed to save source')
+  return res.json()
+}
+
 export async function runScan(body: {
-  mode?: string
+  source_id?: string
+  all?: boolean
   dry_run?: boolean
-  seeds?: string[]
-  since_days?: number
-  ats_sources?: string[]
-  limit_per_ats?: number
-}): Promise<{ counters: ScanCounters; added: number; refreshed: number; delisted: number }> {
+  max_posting_age_days?: number
+}): Promise<{ runs: SourceRun[] }> {
   const res = await fetch('/api/scanner/run', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   })
-  if (!res.ok) throw new Error('Scan failed')
+  if (!res.ok) {
+    // Include status and server detail: "Scan failed" alone made a stale backend
+    // indistinguishable from a bad request.
+    const detail = await res.text().catch(() => '')
+    throw new Error(`Scan failed (${res.status}) ${detail.slice(0, 200)}`)
+  }
   return res.json()
 }
 
 /** Dry-run the ingest filters and report the funnel without writing anything. */
-export async function previewScan(overrides: Partial<ScanConfig> & { limit_companies?: number }): Promise<{
+export async function previewScan(overrides: Partial<ScanConfig> & { source_id?: string; limit_companies?: number }): Promise<{
   counters: ScanCounters
-  samples: Record<string, { title: string; company: string; location: string; url: string }[]>
+  drops: DropBreakdown
   companies_scanned: number
 }> {
   const res = await fetch('/api/scanner/preview', {
@@ -359,4 +443,95 @@ export async function updateInfo(data: UserInfo): Promise<UserInfo> {
   })
   if (!res.ok) throw new Error('Failed to save info')
   return res.json()
+}
+
+// ── Pipeline ────────────────────────────────────────────────────────
+
+/** In order. Mirrors PIPELINE_STAGES in storage/models.py — index position is the
+ *  ordering, so "advance" is +1 and the two lists must not drift. */
+export const PIPELINE_STAGES = ['interested', 'contacted', 'applied', 'oa', 'interview', 'final'] as const
+export type PipelineStage = (typeof PIPELINE_STAGES)[number]
+
+export const STAGE_LABELS: Record<PipelineStage, string> = {
+  interested: 'Interested',
+  contacted: 'Contacted',
+  applied: 'Applied',
+  oa: 'OA',
+  interview: 'Interview Process',
+  final: 'Final',
+}
+
+/** Results recorded on a Final entry. Not stages. */
+export const PIPELINE_OUTCOMES = ['offer', 'rejected'] as const
+export type PipelineOutcome = (typeof PIPELINE_OUTCOMES)[number]
+
+/** A pipeline entry flattened together with the job it points at. */
+export interface PipelineJob {
+  job_id: string
+  stage: PipelineStage
+  outcome: PipelineOutcome | null
+  /** Set at the Contacted stage, carried through every stage after it. */
+  contact_email: string | null
+  notes: string | null
+  added_at: string
+  /** Last time the user touched this entry — moved it, set a result, logged a contact. */
+  last_interacted_at: string
+  company: string
+  title: string
+  url: string
+  location: string | null
+  provider_id: string
+  tier: string
+  status: string
+  posted_at: string | null
+  salary_min: number | null
+  salary_max: number | null
+  salary_currency: string | null
+}
+
+export interface PipelinePage {
+  items: PipelineJob[]
+  counts: Record<string, number>
+  stages: PipelineStage[]
+}
+
+export async function fetchPipeline(stage?: PipelineStage): Promise<PipelinePage> {
+  const res = await fetch(`/api/pipeline${stage ? `?stage=${stage}` : ''}`)
+  if (!res.ok) throw new Error('Failed to load pipeline')
+  return res.json()
+}
+
+export async function addToPipeline(jobId: string): Promise<PipelineJob> {
+  const res = await fetch('/api/pipeline', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ job_id: jobId }),
+  })
+  if (!res.ok) throw new Error('Failed to add to pipeline')
+  return res.json()
+}
+
+export async function updatePipelineEntry(
+  jobId: string,
+  patch: {
+    stage?: PipelineStage
+    outcome?: PipelineOutcome
+    notes?: string
+    /** Empty string clears it; omitting the key leaves it alone. */
+    contact_email?: string
+    clear_outcome?: boolean
+  },
+): Promise<PipelineJob> {
+  const res = await fetch(`/api/pipeline/${jobId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(patch),
+  })
+  if (!res.ok) throw new Error('Failed to update pipeline entry')
+  return res.json()
+}
+
+export async function removeFromPipeline(jobId: string): Promise<void> {
+  const res = await fetch(`/api/pipeline/${jobId}`, { method: 'DELETE' })
+  if (!res.ok) throw new Error('Failed to remove from pipeline')
 }

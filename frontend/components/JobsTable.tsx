@@ -33,7 +33,32 @@ const TIER_COLOR: Record<string, string> = {
   senior: '#fbbf24',
 }
 
-export default function JobsTable({ jobs }: { jobs: Job[] }) {
+const actionBtnStyle: React.CSSProperties = {
+  background: 'transparent',
+  border: '1px solid var(--border)',
+  borderRadius: '3px',
+  color: 'var(--text-muted)',
+  width: '18px',
+  height: '18px',
+  lineHeight: '1',
+  padding: 0,
+  cursor: 'pointer',
+  fontSize: '12px',
+}
+
+/** The two triage actions. `onAdd` sends a job to the pipeline, `onDismiss` rejects it;
+ *  either way the row leaves this list, which is the not-yet-triaged inbox. So there is
+ *  no "already actioned" state to render. */
+export default function JobsTable({
+  jobs,
+  onAdd,
+  onDismiss,
+}: {
+  jobs: Job[]
+  onAdd?: (job: Job) => void
+  onDismiss?: (job: Job) => void
+}) {
+  const actions = Boolean(onAdd || onDismiss)
   if (jobs.length === 0) {
     return (
       <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>
@@ -46,6 +71,7 @@ export default function JobsTable({ jobs }: { jobs: Job[] }) {
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
         <thead>
           <tr style={{ background: 'var(--surface-2)' }}>
+            {actions && <th style={{ ...thStyle, width: '52px' }} />}
             <th style={{ ...thStyle, width: '30%' }}>Title</th>
             <th style={thStyle}>Company</th>
             <th style={thStyle}>Source</th>
@@ -68,6 +94,35 @@ export default function JobsTable({ jobs }: { jobs: Job[] }) {
                 opacity: job.status === 'delisted' ? 0.5 : 1,
               }}
             >
+              {actions && (
+                <td style={{ ...tdStyle, whiteSpace: 'nowrap' }}>
+                  {onAdd && (
+                    <button
+                      title="Add to pipeline"
+                      // The row itself opens the posting — these clicks must not.
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        onAdd(job)
+                      }}
+                      style={{ ...actionBtnStyle, marginRight: 3 }}
+                    >
+                      +
+                    </button>
+                  )}
+                  {onDismiss && (
+                    <button
+                      title="Not interested — hide this posting"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        onDismiss(job)
+                      }}
+                      style={actionBtnStyle}
+                    >
+                      ✕
+                    </button>
+                  )}
+                </td>
+              )}
               <td style={tdStyle}>
                 {job.title}
                 {job.status === 'delisted' && (

@@ -1,6 +1,6 @@
 'use client'
-import { useRef } from 'react'
-import { useResumeUpload } from '@/lib/useResumeUpload'
+import { useRef, useState } from 'react'
+import { uploadResume } from '@/lib/api'
 
 interface Props {
   onUploaded: (id: string) => void
@@ -8,7 +8,28 @@ interface Props {
 
 export default function ResumeUpload({ onUploaded }: Props) {
   const inputRef = useRef<HTMLInputElement>(null)
-  const { uploading, error, upload: handleFile } = useResumeUpload(onUploaded)
+  const [uploading, setUploading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function handleFile(file: File) {
+    if (uploading) return
+    if (!file.name.toLowerCase().endsWith('.pdf')) {
+      setError('Only PDF resumes are supported.')
+      return
+    }
+    setUploading(true)
+    setError(null)
+    try {
+      const { id } = await uploadResume(file)
+      onUploaded(id)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Upload failed')
+    } finally {
+      setUploading(false)
+      // Clear the input so re-picking the same file still fires onChange.
+      if (inputRef.current) inputRef.current.value = ''
+    }
+  }
 
   return (
     <div>

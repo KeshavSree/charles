@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from logging_config import configure_logging
 from storage.db import create_tables
-from api.routers import jobs, resumes, scanner, profiles, info
+from api.routers import jobs, pipeline, resumes, scanner, profiles, info
 
 
 @asynccontextmanager
@@ -32,3 +32,4 @@ app.include_router(resumes.router, prefix="/api")
 app.include_router(scanner.router, prefix="/api")
 app.include_router(profiles.router, prefix="/api")
 app.include_router(info.router, prefix="/api")
+app.include_router(pipeline.router, prefix="/api")

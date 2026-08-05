@@ -40,6 +40,31 @@ _MIGRATIONS = [
     "ALTER TABLE user_info ADD COLUMN github VARCHAR(256)",
     "ALTER TABLE user_info ADD COLUMN website VARCHAR(256)",
     "ALTER TABLE user_info ADD COLUMN job_alerts BOOLEAN",
+    # skip_tiers (exclusive) was replaced by seniority_tiers (inclusive). The old
+    # column is left in place on existing DBs; SQLAlchemy no longer maps it.
+    "ALTER TABLE scan_config ADD COLUMN seniority_tiers JSON",
+    # discovery/mode became source_id when discovery modes became registered sources.
+    # SQLite cannot rename or drop cleanly, so the new columns are added and backfilled
+    # and the old ones are left inert.
+    "ALTER TABLE jobs ADD COLUMN source_id VARCHAR(64)",
+    "UPDATE jobs SET source_id = discovery WHERE source_id IS NULL",
+    "ALTER TABLE scan_runs ADD COLUMN source_id VARCHAR(64)",
+    "UPDATE scan_runs SET source_id = mode WHERE source_id IS NULL",
+    # Drop the superseded columns rather than leaving them behind. They were declared
+    # NOT NULL with no SQL-level default, so once the models stopped mapping them every
+    # INSERT failed the old constraint. Ordered after the backfills above, which read
+    # them. Re-running is a no-op: "no such column" is treated as already-applied.
+    "ALTER TABLE jobs DROP COLUMN discovery",
+    "ALTER TABLE scan_runs DROP COLUMN mode",
+    "ALTER TABLE scan_config DROP COLUMN since_days",
+    "ALTER TABLE scan_config DROP COLUMN shuffle",
+    "ALTER TABLE scan_runs ADD COLUMN drops JSON",
+    # pipeline_entries.updated_at was renamed to say what it actually tracks: the last
+    # time the *user* touched the entry, not a row-modified stamp. On a fresh DB
+    # create_all already makes the new name and this reports "no such column", which is
+    # treated as already-applied.
+    "ALTER TABLE pipeline_entries RENAME COLUMN updated_at TO last_interacted_at",
+    "ALTER TABLE pipeline_entries ADD COLUMN contact_email VARCHAR(320)",
 ]
 
 
@@ -49,10 +74,9 @@ _MIGRATIONS = [
 # API endpoint itself, so there is nothing to guess and a wrong URL shows up in board
 # health rather than 404ing quietly.
 #
-# The `enabled=False` block is the honest state of charles's old companies.yaml — those
-# names were configured against Greenhouse but returned nothing, because they are not
-# on a public Greenhouse board under that slug. They are kept as visible, disabled
-# to-dos instead of being silently dropped or left broken.
+# Every entry below was fetched once to confirm it actually returns postings. The
+# disabled ones failed that check and are kept as visible to-dos, with the reason, rather
+# than being silently dropped or left enabled and quietly returning nothing.
 _SEED_COMPANIES: list[tuple[str, str, bool, str | None]] = [
     ("Stripe", "https://job-boards.greenhouse.io/stripe", True, None),
     ("MongoDB", "https://job-boards.greenhouse.io/mongodb", True, None),
@@ -70,33 +94,33 @@ _SEED_COMPANIES: list[tuple[str, str, bool, str | None]] = [
     ("OpenAI", "https://jobs.ashbyhq.com/openai", True, None),
     ("Ramp", "https://jobs.ashbyhq.com/ramp", True, None),
     ("Netflix", "https://explore.jobs.netflix.net/careers", False,
-     "No public Greenhouse board — needs a verified ATS URL."),
+     "No public ATS the scanner supports."),
     ("Google", "https://www.google.com/about/careers/applications/", False,
-     "Not on a public ATS the scanner supports."),
+     "No public ATS the scanner supports."),
     ("Apple", "https://jobs.apple.com/", False,
-     "Not on a public ATS the scanner supports."),
-    ("Amazon", "https://www.amazon.jobs/", False,
-     "Needs the `amazon` provider (single-employer)."),
-    ("NVIDIA", "https://nvidia.wd5.myworkdayjobs.com/NVIDIAExternalCareerSite", False,
-     "Workday tenant — enable once verified; large board, consider max_pages."),
+     "No public ATS the scanner supports."),
+    ("Amazon", "https://www.amazon.jobs/", True,
+     "Verified. Hits the 2000 posting cap, narrow with query params on the careers URL."),
+    ("NVIDIA", "https://nvidia.wd5.myworkdayjobs.com/NVIDIAExternalCareerSite", True,
+     "Workday. Verified. Hits the 2000 posting page cap, raise max_pages for full coverage."),
     ("Uber", "https://www.uber.com/us/en/careers/list/", False,
-     "Not on a public ATS the scanner supports."),
+     "No public ATS the scanner supports."),
     ("Snap", "https://careers.snap.com/jobs", False,
-     "Needs a verified ATS URL."),
+     "No ATS detected from this URL."),
     ("Notion", "https://job-boards.greenhouse.io/notion", False,
-     "Previously returned nothing — verify the board slug."),
+     "Greenhouse slug 404s. Needs the real board URL."),
     ("Atlassian", "https://www.atlassian.com/company/careers/all-jobs", False,
-     "Needs a verified ATS URL."),
+     "No ATS detected from this URL."),
     ("HubSpot", "https://www.hubspot.com/careers/jobs", False,
-     "Needs a verified ATS URL."),
+     "No ATS detected from this URL."),
     ("Zendesk", "https://jobs.zendesk.com/us/en", False,
-     "Needs a verified ATS URL."),
-    ("CrowdStrike", "https://crowdstrike.wd5.myworkdayjobs.com/crowdstrikecareers", False,
-     "Workday tenant — enable once verified."),
+     "No ATS detected from this URL."),
+    ("CrowdStrike", "https://crowdstrike.wd5.myworkdayjobs.com/crowdstrikecareers", True,
+     "Workday. Verified, ~400 postings."),
     ("Snowflake", "https://careers.snowflake.com/us/en", False,
-     "Needs a verified ATS URL."),
+     "No ATS detected from this URL."),
     ("Confluent", "https://job-boards.greenhouse.io/confluent", False,
-     "Previously returned nothing — verify the board slug."),
+     "Greenhouse slug 404s. Needs the real board URL."),
 ]
 
 
@@ -131,9 +155,15 @@ async def create_tables() -> None:
                 await conn.exec_driver_sql(stmt)
             except Exception as exc:  # noqa: BLE001 — inspected below
                 msg = str(exc).lower()
-                # The only expected failure is re-adding a column that already exists
-                # (these migrations are additive + idempotent). Anything else is real.
-                if "duplicate column" in msg or "already exists" in msg:
+                # Two expected failures, both meaning "already in the desired state":
+                #   - re-adding a column that exists (migrations are additive/idempotent)
+                #   - backfilling from a legacy column on a database that never had one,
+                #     which is every fresh install. Anything else is real.
+                if (
+                    "duplicate column" in msg
+                    or "already exists" in msg
+                    or "no such column" in msg
+                ):
                     logger.debug("Migration already applied, skipping: %s", stmt)
                 else:
                     logger.error("Migration failed: %s", stmt, exc_info=True)

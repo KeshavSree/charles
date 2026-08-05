@@ -9,12 +9,14 @@ from typing import Optional
 
 _log = logging.getLogger(__name__)
 
-from sqlalchemy import select, delete
+from sqlalchemy import func, select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from storage.models import (
-    BoardHealth, Job, Profile, ProfileExperience, ProfileEducation,
-    Resume, ResumeSection, ScanConfig, ScanRun, TrackedCompany, UserInfo,
+    BoardHealth, Job, PipelineEntry, PIPELINE_OUTCOMES, PIPELINE_STAGES,
+    Profile, ProfileExperience, ProfileEducation,
+    Resume, ResumeSection, ScanConfig, ScanRun, SourceConfig, TrackedCompany,
+    UserInfo,
 )
 
 
@@ -33,7 +35,7 @@ async def persist_postings(
     session: AsyncSession,
     postings: list,
     *,
-    discovery: str = "tracked",
+    source_id: str = "tracked",
 ) -> tuple[int, int]:
     """Insert new postings and refresh ones already stored.
 
@@ -64,7 +66,7 @@ async def persist_postings(
         salary = getattr(posting, "salary", None)
         values = {
             "provider_id": posting.provider_id,
-            "discovery": discovery,
+            "source_id": source_id,
             "company": posting.company,
             "title": posting.title,
             "url": posting.url,
@@ -97,8 +99,11 @@ async def persist_postings(
                 setattr(existing, key, value)
             existing.last_seen_at = now
             existing.updated_at = now
-            # A posting that reappears after being delisted is live again.
-            existing.status = "active"
+            # A posting that reappears after being delisted is live again — but a
+            # dismissal is the user's own decision and outranks the scanner's, or
+            # every rescan would resurrect the rows they just rejected.
+            if existing.status != "dismissed":
+                existing.status = "active"
             refreshed += 1
 
     await session.commit()
@@ -130,6 +135,31 @@ async def mark_delisted(
     return len(rows)
 
 
+async def set_job_status(
+    session: AsyncSession, job_id: str, status: str
+) -> Optional[Job]:
+    """Set a posting's status by hand. Used by the jobs list's dismiss/restore."""
+    job = await session.get(Job, job_id)
+    if job is None:
+        return None
+    job.status = status
+    await session.commit()
+    return job
+
+
+async def purge_jobs(session: AsyncSession) -> int:
+    """Delete every stored posting and report how many went.
+
+    Deliberately leaves ScanRun and BoardHealth alone: those record what the scanner
+    *did*, which stays true whether or not the resulting rows are still around, and
+    board-failure streaks are the one thing you least want to lose when starting over.
+    """
+    total = (await session.execute(select(func.count()).select_from(Job))).scalar_one()
+    await session.execute(delete(Job))
+    await session.commit()
+    return total
+
+
 # ── Scanner configuration ───────────────────────────────────────────
 
 _SCAN_CONFIG_ID = "default"
@@ -152,10 +182,8 @@ DEFAULT_SCAN_CONFIG = {
         ],
     },
     "location_filter": {},
-    "skip_tiers": [],
+    "seniority_tiers": [],
     "blocked_companies": [],
-    "ats_sources": ["greenhouse", "lever", "ashby"],
-    "since_days": 7,
 }
 
 
@@ -192,6 +220,108 @@ async def save_scan_config(session: AsyncSession, data: dict) -> ScanConfig:
     row.updated_at = datetime.now(tz=timezone.utc)
     await session.commit()
     return await session.get(ScanConfig, _SCAN_CONFIG_ID)
+
+
+# ── Pipeline ────────────────────────────────────────────────────────
+
+async def add_to_pipeline(session: AsyncSession, job_id: str) -> Optional[PipelineEntry]:
+    """Put a job into the pipeline at the first stage. Idempotent.
+
+    Returns None if no such job exists, so the caller can 404 rather than create a
+    dangling entry.
+    """
+    existing = await session.get(PipelineEntry, job_id)
+    if existing is not None:
+        return existing
+    if await session.get(Job, job_id) is None:
+        return None
+    now = datetime.now(tz=timezone.utc)
+    entry = PipelineEntry(
+        job_id=job_id, stage=PIPELINE_STAGES[0], added_at=now, last_interacted_at=now
+    )
+    session.add(entry)
+    await session.commit()
+    return entry
+
+
+async def update_pipeline_entry(
+    session: AsyncSession,
+    job_id: str,
+    stage: Optional[str] = None,
+    outcome: Optional[str] = None,
+    notes: Optional[str] = None,
+    contact_email: Optional[str] = None,
+    clear_outcome: bool = False,
+) -> Optional[PipelineEntry]:
+    entry = await session.get(PipelineEntry, job_id)
+    if entry is None:
+        return None
+    if stage is not None:
+        if stage not in PIPELINE_STAGES:
+            raise ValueError(f"unknown pipeline stage: {stage}")
+        entry.stage = stage
+        # An outcome only means anything in 'final'. Moving back out of it drops the
+        # stale result rather than leaving an "Offer" hanging off an OA row.
+        if stage != "final":
+            entry.outcome = None
+    if clear_outcome:
+        entry.outcome = None
+    elif outcome is not None:
+        if outcome not in PIPELINE_OUTCOMES:
+            raise ValueError(f"unknown pipeline outcome: {outcome}")
+        entry.outcome = outcome
+    if notes is not None:
+        entry.notes = notes
+    if contact_email is not None:
+        # Blanking the field clears it; the value otherwise survives every later
+        # stage change, which is the point of recording it at 'contacted'.
+        entry.contact_email = contact_email.strip() or None
+    entry.last_interacted_at = datetime.now(tz=timezone.utc)
+    await session.commit()
+    return entry
+
+
+async def remove_from_pipeline(session: AsyncSession, job_id: str) -> bool:
+    entry = await session.get(PipelineEntry, job_id)
+    if entry is None:
+        return False
+    await session.delete(entry)
+    await session.commit()
+    return True
+
+
+async def list_pipeline(
+    session: AsyncSession, stage: Optional[str] = None
+) -> list[tuple[PipelineEntry, Job]]:
+    """Entries with their jobs, most recently touched first.
+
+    Explicit join — this codebase declares FKs but never uses relationship().
+    """
+    stmt = (
+        select(PipelineEntry, Job)
+        .join(Job, Job.id == PipelineEntry.job_id)
+        .order_by(PipelineEntry.last_interacted_at.desc())
+    )
+    if stage:
+        stmt = stmt.where(PipelineEntry.stage == stage)
+    return [(e, j) for e, j in (await session.execute(stmt)).all()]
+
+
+async def get_pipeline_entry(
+    session: AsyncSession, job_id: str
+) -> Optional[tuple[PipelineEntry, Job]]:
+    stmt = (
+        select(PipelineEntry, Job)
+        .join(Job, Job.id == PipelineEntry.job_id)
+        .where(PipelineEntry.job_id == job_id)
+    )
+    return (await session.execute(stmt)).first()
+
+
+async def pipeline_stage_counts(session: AsyncSession) -> dict[str, int]:
+    stmt = select(PipelineEntry.stage, func.count()).group_by(PipelineEntry.stage)
+    rows = dict((await session.execute(stmt)).all())
+    return {stage: int(rows.get(stage, 0)) for stage in PIPELINE_STAGES}
 
 
 # ── Tracked companies ───────────────────────────────────────────────
@@ -231,12 +361,62 @@ async def delete_tracked_company(session: AsyncSession, company_id: int) -> bool
     return True
 
 
+# ── Source enable state + settings ──────────────────────────────────
+
+# Sources that are on for a fresh install. The board feeds stay off: they need no
+# company list, so the title and location filters are the only thing constraining them,
+# and turning all twelve on by default would flood the table before it is tuned.
+DEFAULT_ENABLED_SOURCES = {"tracked"}
+
+
+async def list_source_configs(session: AsyncSession) -> dict[str, SourceConfig]:
+    """Every registered source's row, creating any that do not exist yet."""
+    from scanner.sources._registry import load_sources
+
+    rows = {
+        r.id: r for r in (await session.execute(select(SourceConfig))).scalars().all()
+    }
+    now = datetime.now(tz=timezone.utc)
+    created = False
+    for source_id in load_sources():
+        if source_id in rows:
+            continue
+        row = SourceConfig(
+            id=source_id,
+            enabled=source_id in DEFAULT_ENABLED_SOURCES,
+            settings={},
+            updated_at=now,
+        )
+        session.add(row)
+        rows[source_id] = row
+        created = True
+    if created:
+        await session.commit()
+    return rows
+
+
+async def save_source_config(
+    session: AsyncSession, source_id: str, data: dict
+) -> SourceConfig:
+    rows = await list_source_configs(session)
+    row = rows.get(source_id)
+    if row is None:
+        raise ValueError(f"unknown source: {source_id}")
+    if "enabled" in data:
+        row.enabled = bool(data["enabled"])
+    if "settings" in data and isinstance(data["settings"], dict):
+        row.settings = data["settings"]
+    row.updated_at = datetime.now(tz=timezone.utc)
+    await session.commit()
+    return row
+
+
 # ── Run + health records ────────────────────────────────────────────
 
-async def create_scan_run(session: AsyncSession, mode: str, dry_run: bool) -> ScanRun:
+async def create_scan_run(session: AsyncSession, source_id: str, dry_run: bool) -> ScanRun:
     row = ScanRun(
         started_at=datetime.now(tz=timezone.utc),
-        mode=mode,
+        source_id=source_id,
         status="running",
         dry_run=dry_run,
     )

@@ -60,6 +60,7 @@ export default function FilterBar({ companies, providers, tiers, values, onChang
       </select>
       <select value={values.status || 'active'} onChange={(e) => onChange('status', e.target.value)} style={inputStyle}>
         <option value="active">Active</option>
+        <option value="dismissed">Dismissed</option>
         <option value="delisted">Delisted</option>
         <option value="any">Any status</option>
       </select>

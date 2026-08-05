@@ -30,8 +30,8 @@ class Job(Base):
     id: Mapped[str] = mapped_column(String(16), primary_key=True)
     dedup_url: Mapped[str] = mapped_column(Text, nullable=False, unique=True, index=True)
     provider_id: Mapped[str] = mapped_column(String(64), nullable=False)
-    # How this posting was discovered: tracked | directory | seed | board
-    discovery: Mapped[str] = mapped_column(String(32), nullable=False, default="tracked")
+    # Which registered source produced this posting.
+    source_id: Mapped[str] = mapped_column(String(64), nullable=False, default="tracked", index=True)
     company: Mapped[str] = mapped_column(String(256), nullable=False)
     title: Mapped[str] = mapped_column(String(512), nullable=False)
     url: Mapped[str] = mapped_column(Text, nullable=False)
@@ -45,7 +45,10 @@ class Job(Base):
     )
     # intern | entry | mid | senior
     tier: Mapped[str] = mapped_column(String(16), nullable=False, default="mid")
-    # active | delisted | skipped_invalid_url | skipped_blocked_host | skipped_expired
+    # active | dismissed | delisted | skipped_invalid_url | skipped_blocked_host
+    # | skipped_expired
+    # 'dismissed' is the only user-set value: the rest are the scanner's. It survives
+    # rescans (see persist_postings) so a rejected posting stays rejected.
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="active")
     first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
@@ -55,6 +58,45 @@ class Job(Base):
     trust_score: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     trust_flags: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
     fingerprint: Mapped[Optional[str]] = mapped_column(String(16), nullable=True, index=True)
+
+
+# The application stages, in order. Index position is the whole ordering model —
+# "advance" is +1 here — so never reorder without a data migration.
+PIPELINE_STAGES = ("interested", "contacted", "applied", "oa", "interview", "final")
+
+# Terminal results, recorded on an entry sitting in the 'final' stage. Deliberately
+# NOT stages: a job is in 'final' and separately has (or does not yet have) a result.
+PIPELINE_OUTCOMES = ("offer", "rejected")
+
+
+class PipelineEntry(Base):
+    """A job the user is actively pursuing.
+
+    `job_id` is the primary key, so a job is in the pipeline at most once. Deleting
+    the entry drops the job from the pipeline and leaves the `Job` row alone — the
+    scanner's own lifecycle (`Job.status`) is independent of this one.
+    """
+
+    __tablename__ = "pipeline_entries"
+
+    job_id: Mapped[str] = mapped_column(String(16), ForeignKey("jobs.id"), primary_key=True)
+    # interested | contacted | applied | oa | interview | final
+    stage: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="interested", index=True
+    )
+    # offer | rejected — only meaningful while stage == 'final'
+    outcome: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
+    # Who was reached out to. Captured at the 'contacted' stage and carried through
+    # every stage after it — the recruiter you emailed is still the thread you reply
+    # on at OA and interview time.
+    contact_email: Mapped[Optional[str]] = mapped_column(String(320), nullable=True)
+    notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    added_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    # Last time the user did something with this entry — moved its stage, set a
+    # result, recorded a contact. Not a scanner timestamp.
+    last_interacted_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
 
 
 # Composite index backing the default jobs view: active postings, newest first.
@@ -107,19 +149,34 @@ class ScanConfig(Base):
     visa_filter: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     salary_filter: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     trust_filter: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
-    skip_tiers: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
+    # Which seniority tiers to KEEP. Empty means every tier passes.
+    seniority_tiers: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
     max_posting_age_days: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     blocked_companies: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
     company_aliases: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
 
-    # ── Directory / reverse-scan settings ──
-    since_days: Mapped[int] = mapped_column(Integer, nullable=False, default=7)
+    # ── Global scan settings ──
+    # max_posting_age_days above is the single age control. Tracked sources treat an
+    # unset value as no limit; reverse sources fall back to REVERSE_FALLBACK_DAYS.
     include_undated: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
-    ats_sources: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
-    limit_per_ats: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    shuffle: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     concurrency: Mapped[int] = mapped_column(Integer, nullable=False, default=10)
 
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class SourceConfig(Base):
+    """Per-source enable state and settings.
+
+    Rows are created lazily the first time a registered source is seen, so dropping a
+    new source file into scanner/sources/ needs no migration. `settings` is an opaque
+    blob whose shape is owned by the source itself.
+    """
+
+    __tablename__ = "source_config"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    settings: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
@@ -135,8 +192,8 @@ class ScanRun(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     finished_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
-    # tracked | directory | seeds
-    mode: Mapped[str] = mapped_column(String(32), nullable=False, default="tracked")
+    # Which source this run covers. One ScanRun per source, never a blended row.
+    source_id: Mapped[str] = mapped_column(String(64), nullable=False, default="tracked", index=True)
     # running | completed | failed
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="running")
     dry_run: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
@@ -168,6 +225,8 @@ class ScanRun(Base):
     companies_scanned: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     cap_hit: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     dataset_status: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    # stage -> [{title, count}] for the postings this run dropped.
+    drops: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     unreachable_boards: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
 

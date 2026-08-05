@@ -3,7 +3,16 @@ import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import FilterBar from '@/components/FilterBar'
 import JobsTable from '@/components/JobsTable'
-import { fetchJobFilters, fetchJobs, Job, JobFilters, runScan } from '@/lib/api'
+import {
+  addToPipeline,
+  dismissJob,
+  fetchJobFilters,
+  fetchJobs,
+  purgeListedJobs,
+  Job,
+  JobFilters,
+  runScan,
+} from '@/lib/api'
 
 const btnStyle: React.CSSProperties = {
   background: 'var(--surface)',
@@ -19,10 +28,14 @@ const PAGE_SIZE = 50
 
 export default function JobsPage() {
   const [jobs, setJobs] = useState<Job[]>([])
-  const [filters, setFilters] = useState<JobFilters>({ companies: [], providers: [], tiers: [] })
+  const [filters, setFilters] = useState<JobFilters>({ companies: [], providers: [], tiers: [], sources: [] })
   const [values, setValues] = useState<Record<string, string>>({ status: 'active' })
   const [total, setTotal] = useState(0)
   const [capped, setCapped] = useState(false)
+  // Two-click confirm, matching the Scanner page's purge. Disarms on blur.
+  const [purgeArmed, setPurgeArmed] = useState(false)
+  const [purging, setPurging] = useState(false)
+  const [purged, setPurged] = useState<number | null>(null)
   // Keyset pagination: we keep the stack of cursors we've walked so "Prev" can
   // pop back. Offsets would be simpler but degrade badly — the directory sweep
   // makes tens of thousands of rows, and OFFSET 20000 scans 20,000 rows to
@@ -60,12 +73,63 @@ export default function JobsPage() {
   function handleFilter(key: string, value: string) {
     setCursorStack([null]) // any filter change restarts pagination
     setValues((v) => ({ ...v, [key]: value }))
+    // The armed button is labelled with a count from the old filters. Changing them
+    // would silently repoint it at a different set of rows, so disarm.
+    setPurgeArmed(false)
+    setPurged(null)
+  }
+
+  async function handlePurge() {
+    if (!purgeArmed) {
+      setPurgeArmed(true)
+      return
+    }
+    setPurgeArmed(false)
+    setPurging(true)
+    try {
+      // Exactly the filters the list was fetched with, minus pagination.
+      const { deleted } = await purgeListedJobs(values)
+      setPurged(deleted)
+      setCursorStack([null])
+      await fetchJobFilters().then(setFilters).catch(console.error)
+      await load()
+    } catch (e) {
+      console.error(e)
+    } finally {
+      setPurging(false)
+    }
+  }
+
+  // A job in the pipeline lives on /pipeline, not here — so the row leaves immediately
+  // and the count drops. The server excludes it from every later fetch too, so this
+  // only has to cover the gap until the next load.
+  async function handleAdd(job: Job) {
+    setJobs((rows) => rows.filter((r) => r.id !== job.id))
+    setTotal((n) => Math.max(n - 1, 0))
+    try {
+      await addToPipeline(job.id)
+    } catch (e) {
+      console.error(e)
+      await load() // put it back — the add didn't take
+    }
+  }
+
+  // Same optimistic removal as handleAdd — the row is leaving either way.
+  async function handleDismiss(job: Job) {
+    setJobs((rows) => rows.filter((r) => r.id !== job.id))
+    setTotal((n) => Math.max(n - 1, 0))
+    try {
+      await dismissJob(job.id)
+    } catch (e) {
+      console.error(e)
+      await load()
+    }
   }
 
   async function handleScan() {
     setScanStatus('running')
     try {
-      await runScan({ mode: 'tracked' })
+      await runScan({ all: true })
       setScanStatus('done')
       await fetchJobFilters().then(setFilters).catch(console.error)
       setCursorStack([null])
@@ -78,6 +142,9 @@ export default function JobsPage() {
   }
 
   const pageNum = cursorStack.length
+  // The listed jobs already exclude anything in the pipeline, so everything shown is
+  // fair game. `total` is server-capped, so this tracks that cap too.
+  const purgeable = total
 
   return (
     <div>
@@ -88,7 +155,30 @@ export default function JobsPage() {
             {loading ? 'loading…' : `(${total}${capped ? '+' : ''})`}
           </span>
         </h1>
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          {purged !== null && (
+            <span style={{ color: 'var(--text-muted)', fontSize: '12px' }}>
+              Deleted {purged} posting{purged === 1 ? '' : 's'}.
+            </span>
+          )}
+          <button
+            onClick={handlePurge}
+            onBlur={() => setPurgeArmed(false)}
+            disabled={purging || loading || purgeable === 0}
+            title="Deletes the jobs matching the current filters. Pipeline jobs are kept."
+            style={{
+              ...btnStyle,
+              borderColor: purgeArmed ? '#f87171' : 'var(--border)',
+              color: purgeArmed ? '#f87171' : 'var(--text-muted)',
+              opacity: purging || loading || purgeable === 0 ? 0.4 : 1,
+            }}
+          >
+            {purging
+              ? 'Purging…'
+              : purgeArmed
+                ? 'Click again to confirm'
+                : `🗑 Purge ${purgeable}${capped ? '+' : ''} listed`}
+          </button>
           <Link href="/scanner" style={{ ...btnStyle, textDecoration: 'none' }}>
             ⚙ Scanner
           </Link>
@@ -101,7 +191,7 @@ export default function JobsPage() {
               opacity: scanStatus === 'running' ? 0.6 : 1,
             }}
           >
-            {scanStatus === 'idle' && '↻ Scan Now'}
+            {scanStatus === 'idle' && '↻ Scan All'}
             {scanStatus === 'running' && 'Scanning…'}
             {scanStatus === 'done' && '✓ Done'}
             {scanStatus === 'error' && '✗ Failed'}
@@ -116,7 +206,7 @@ export default function JobsPage() {
         values={values}
         onChange={handleFilter}
       />
-      <JobsTable jobs={jobs} />
+      <JobsTable jobs={jobs} onAdd={handleAdd} onDismiss={handleDismiss} />
 
       <div style={{ marginTop: '12px', display: 'flex', gap: '8px', alignItems: 'center' }}>
         <button
