@@ -12,15 +12,22 @@ export default function ResumeUpload({ onUploaded }: Props) {
   const [error, setError] = useState<string | null>(null)
 
   async function handleFile(file: File) {
-    setError(null)
+    if (uploading) return
+    if (!file.name.toLowerCase().endsWith('.pdf')) {
+      setError('Only PDF resumes are supported.')
+      return
+    }
     setUploading(true)
+    setError(null)
     try {
       const { id } = await uploadResume(file)
       onUploaded(id)
-    } catch {
-      setError('Upload failed. Make sure it is a PDF.')
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Upload failed')
     } finally {
       setUploading(false)
+      // Clear the input so re-picking the same file still fires onChange.
+      if (inputRef.current) inputRef.current.value = ''
     }
   }
 

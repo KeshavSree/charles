@@ -2,16 +2,26 @@
 __pycache__/
 *.py[cod]
 .env
-jobs.db
+*.db
 .pytest_cache/
 
 # Uploads
 uploads/
 
+# Scanner's ATS company datasets — fetched from a public dataset on a 24h TTL,
+# so a committed copy is stale by definition.
+.cache/
+
 # Node
 frontend/.next/
 frontend/node_modules/
 frontend/out/
+frontend/tsconfig.tsbuildinfo
+
+# Editors
+.idea/
+.vscode/
+.DS_Store
 
 # Brainstorm
 .superpowers/

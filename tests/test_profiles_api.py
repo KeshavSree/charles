@@ -34,10 +34,10 @@ async def client(tmp_path, monkeypatch):
 
 
 @pytest.fixture
-async def resume_id(client):
+async def resume_id(client, sample_pdf):
     resp = await client.post(
         "/api/resumes",
-        files={"file": ("cv.pdf", b"%PDF-1.4 fake", "application/pdf")},
+        files={"file": ("cv.pdf", sample_pdf, "application/pdf")},
     )
     assert resp.status_code == 201
     return resp.json()["id"]

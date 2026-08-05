@@ -45,10 +45,10 @@ async def test_upload_non_pdf_rejected(client):
     assert resp.status_code == 400
 
 
-async def test_upload_pdf_creates_resume(client):
+async def test_upload_pdf_creates_resume(client, sample_pdf):
     resp = await client.post(
         "/api/resumes",
-        files={"file": ("my_cv.pdf", b"%PDF-1.4 fake content", "application/pdf")},
+        files={"file": ("my_cv.pdf", sample_pdf, "application/pdf")},
     )
     assert resp.status_code == 201
     data = resp.json()
@@ -57,7 +57,19 @@ async def test_upload_pdf_creates_resume(client):
     list_resp = await client.get("/api/resumes")
     assert len(list_resp.json()) == 1
     assert list_resp.json()[0]["filename"] == "my_cv.pdf"
-    assert list_resp.json()[0]["section_count"] == 0
+    assert isinstance(list_resp.json()[0]["section_count"], int)
+
+
+async def test_upload_corrupt_pdf_errors(client):
+    # A PDF that can't be parsed must fail loudly, not silently "succeed" empty.
+    resp = await client.post(
+        "/api/resumes",
+        files={"file": ("broken.pdf", b"%PDF-1.4 not a real pdf", "application/pdf")},
+    )
+    assert resp.status_code == 500
+    # And nothing half-built should be left behind (the upload rolled back).
+    list_resp = await client.get("/api/resumes")
+    assert list_resp.json() == []
 
 
 async def test_get_resume_not_found(client):
@@ -65,10 +77,10 @@ async def test_get_resume_not_found(client):
     assert resp.status_code == 404
 
 
-async def test_delete_resume(client):
+async def test_delete_resume(client, sample_pdf):
     upload = await client.post(
         "/api/resumes",
-        files={"file": ("cv.pdf", b"%PDF-1.4 fake", "application/pdf")},
+        files={"file": ("cv.pdf", sample_pdf, "application/pdf")},
     )
     resume_id = upload.json()["id"]
 
@@ -84,10 +96,10 @@ async def test_delete_resume_not_found(client):
     assert resp.status_code == 404
 
 
-async def test_upload_pdf_auto_generates_profile(client):
+async def test_upload_pdf_auto_generates_profile(client, sample_pdf):
     resp = await client.post(
         "/api/resumes",
-        files={"file": ("cv.pdf", b"%PDF-1.4 fake", "application/pdf")},
+        files={"file": ("cv.pdf", sample_pdf, "application/pdf")},
     )
     assert resp.status_code == 201
     resume_id = resp.json()["id"]
