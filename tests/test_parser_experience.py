@@ -26,16 +26,18 @@ def test_extracts_two_entries():
 
 def test_first_entry_dates():
     entries = extract_experience(SAMPLE)
-    assert "2022" in entries[0].start_date
-    assert "2024" in entries[0].end_date
+    assert entries[0].start_date == "01/2022"
+    assert entries[0].end_date == "03/2024"
     assert entries[0].is_current is False
 
 
-def test_present_sets_is_current():
+def test_present_leaves_no_end_date():
+    """"Present" is not a date; `is_current` carries that meaning, and the
+    profile editor hides the end field entirely for a current role."""
     text = "Engineer\nAcme\n2023 – Present\nDid stuff"
     entries = extract_experience(text)
     assert entries[0].is_current is True
-    assert entries[0].end_date == "Present"
+    assert entries[0].end_date == ""
 
 
 def test_description_captured():

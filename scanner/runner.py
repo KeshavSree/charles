@@ -49,6 +49,10 @@ class ScanResult:
     dataset_status: dict[str, str] = field(default_factory=dict)
     unreachable_boards: int = 0
     workday_no_date_skip: int = 0
+    # (provider_id, slug, ok, kind, detail) per board actually requested this run.
+    # Feeds the dead-board list; kept in memory only for the length of the run.
+    board_outcomes: list[tuple[str, str, bool, str, str]] = field(default_factory=list)
+    boards_skipped_dead: int = 0
 
     def as_run_values(self) -> dict:
         values = self.counters.as_dict()
@@ -62,6 +66,7 @@ class ScanResult:
                 "cap_hit": self.cap_hit,
                 "dataset_status": self.dataset_status or None,
                 "unreachable_boards": self.unreachable_boards,
+                "boards_skipped_dead": self.boards_skipped_dead,
             }
         )
         return values

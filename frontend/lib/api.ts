@@ -141,6 +141,7 @@ export interface ScanCounters {
 
 export interface ScanRun extends ScanCounters {
   id: number
+  boards_skipped_dead?: number
   drops?: DropBreakdown
   started_at: string
   finished_at: string | null
@@ -283,23 +284,64 @@ export async function saveSource(
   return res.json()
 }
 
+export interface ScanStage {
+  id: string
+  label: string
+  status: 'pending' | 'running' | 'done' | 'failed'
+  done: number
+  added?: number
+  /** null when the source never declares a denominator (single-request feeds). */
+  total: number | null
+  /** null means indeterminate — render a pulsing bar, not a 0% one. */
+  fraction: number | null
+  found: number
+  kept: number
+  elapsed: number | null
+}
+
+export interface ScanProgress {
+  /** The server's answer to "is a scan happening", never a tab's local guess. */
+  active: boolean
+  run_id: string | null
+  status: 'idle' | 'running' | 'completed' | 'failed' | 'cancelled'
+  error?: string
+  elapsed?: number
+  started_at?: number
+  stage_index?: number
+  stage_count?: number
+  completed?: number
+  kept?: number
+  added?: number
+  current?: (ScanStage & { detail: string }) | null
+  stages: ScanStage[]
+}
+
+export async function cancelScan(): Promise<ScanProgress & { cancelled: boolean }> {
+  const res = await fetch('/api/scanner/cancel', { method: 'POST' })
+  if (!res.ok) throw new Error('Failed to cancel scan')
+  return res.json()
+}
+
+export async function getScanProgress(): Promise<ScanProgress> {
+  const res = await fetch('/api/scanner/progress')
+  if (!res.ok) throw new Error('Failed to load scan progress')
+  return res.json()
+}
+
 export async function runScan(body: {
   source_id?: string
   all?: boolean
   dry_run?: boolean
   max_posting_age_days?: number
-}): Promise<{ runs: SourceRun[] }> {
+}): Promise<ScanProgress & { started: boolean; reason?: string }> {
   const res = await fetch('/api/scanner/run', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   })
-  if (!res.ok) {
-    // Include status and server detail: "Scan failed" alone made a stale backend
-    // indistinguishable from a bad request.
-    const detail = await res.text().catch(() => '')
-    throw new Error(`Scan failed (${res.status}) ${detail.slice(0, 200)}`)
-  }
+  if (!res.ok) throw new Error('Failed to start scan')
+  // 202 with the run's id. The sweep keeps going regardless of this tab; its state is
+  // read from /scanner/progress, so nothing here can time out or desync.
   return res.json()
 }
 
@@ -397,6 +439,8 @@ export interface Profile {
   email: string
   phone: string | null
   linkedin_url: string | null
+  github_url: string | null
+  website: string | null
   location: string | null
   work_auth: string | null
   experience: ProfileExperience[]

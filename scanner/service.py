@@ -5,11 +5,14 @@ the web UI and one triggered on a timer behave identically.
 """
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import logging
 from typing import Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from scanner import progress
 from scanner.runner import ScanResult, run_source
 from scanner.sources._registry import get_source, load_sources
 from storage.repository import (
@@ -55,11 +58,22 @@ async def scan_one(
     run = await create_scan_run(session, source_id=source_id, dry_run=dry_run)
     started_at = run.started_at
 
+    # Marks this source as the running stage. The *run* is claimed by whoever started
+    # it (`start_run`), never here: scan_one used to claim it opportunistically, which
+    # is how a second sweep could reset counters the first was still writing to.
+    progress.begin_stage(source_id)
     try:
         result: ScanResult = await run_source(
             source, config, settings=settings_blob, session=session
         )
+    except asyncio.CancelledError:
+        # A cancelled sweep must not leave the row saying "running" forever, which is
+        # what stranded three rows in scan_runs when a scan was killed by signal.
+        progress.end_stage(source_id, failed=True)
+        await finish_scan_run(session, run, {"status": "cancelled"})
+        raise
     except Exception:
+        progress.end_stage(source_id, failed=True)
         await finish_scan_run(session, run, {"status": "failed"})
         logger.exception("source %s failed", source_id)
         raise
@@ -91,6 +105,7 @@ async def scan_one(
         }
     )
     await finish_scan_run(session, run, values)
+    progress.end_stage(source_id, added=added)
 
     return {
         "run_id": run.id,
@@ -119,17 +134,86 @@ async def scan_all(session: AsyncSession, *, dry_run: bool = False) -> list[dict
     results behind the slow one. Each ScanRun is written as it completes, so the Runs
     tab fills in progressively instead of going quiet for ten minutes.
     """
-    configs = await list_source_configs(session)
     summaries = []
-    for source_id, row in configs.items():
-        if not row.enabled:
-            continue
+    for source_id in await enabled_source_ids(session):
         try:
             summaries.append(await scan_one(session, source_id, dry_run=dry_run))
+        except asyncio.CancelledError:
+            raise  # cancellation is for the whole run, not one source
         except Exception as exc:  # noqa: BLE001 — one bad source must not stop the rest
             logger.exception("source %s failed during scan_all", source_id)
             summaries.append({"source_id": source_id, "error": str(exc)})
     return summaries
+
+
+async def enabled_source_ids(session: AsyncSession) -> list[str]:
+    configs = await list_source_configs(session)
+    return [sid for sid, row in configs.items() if row.enabled]
+
+
+def _label(source_id: str) -> str:
+    source = get_source(source_id)
+    return getattr(source, "label", source_id) if source else source_id
+
+
+async def start_run(
+    *, source_id: Optional[str] = None, all_sources: bool = False, dry_run: bool = False,
+    overrides: Optional[dict] = None, wait: bool = False,
+) -> dict:
+    """Start a sweep in the background and return immediately.
+
+    The run deliberately outlives the request that starts it. Running it *inside* the
+    POST tied "is a scan happening" to one browser tab's fetch: the dev proxy gave up
+    after five minutes, the tab reported failure, and the sweep kept going unseen.
+    Now the request only asks for a run and gets back its id; every client learns the
+    state the same way, by reading `/progress`.
+    """
+    from storage.db import get_session
+
+    if progress.is_active():
+        # Refusing is the point. Two concurrent sweeps shared one set of counters
+        # (progress once read 42,435 of 28,746) and doubled the load on the same ATS
+        # hosts. A second click now just attaches to the run already going.
+        return {"started": False, "reason": "already_running", **progress.snapshot()}
+
+    async with get_session() as session:
+        stages = (
+            [(sid, _label(sid)) for sid in await enabled_source_ids(session)]
+            if all_sources else [(source_id or "", _label(source_id or ""))]
+        )
+    if not stages or not stages[0][0]:
+        raise ValueError("source_id or all is required")
+
+    run_id = progress.begin(stages)
+    if run_id is None:                      # lost a race with another starter
+        return {"started": False, "reason": "already_running", **progress.snapshot()}
+
+    async def owner() -> None:
+        # Its own session: the request that started the run is long gone, and its
+        # session with it.
+        try:
+            async with get_session() as session:
+                if all_sources:
+                    await scan_all(session, dry_run=dry_run)
+                else:
+                    await scan_one(session, source_id, dry_run=dry_run, overrides=overrides)
+            progress.end("completed")
+        except asyncio.CancelledError:
+            progress.end("cancelled")
+            raise
+        except Exception as exc:  # noqa: BLE001 — surfaced through the snapshot
+            logger.exception("scan run %s failed", run_id)
+            progress.end("failed", str(exc))
+
+    task = asyncio.create_task(owner(), name=f"scan-{run_id}")
+    progress.register_task(task)
+    if wait:
+        # The scheduler has no client to poll, so it blocks until the sweep is done.
+        # It still goes through this path so a timed run claims the tracker, shows up
+        # in the UI, and cannot overlap a manual one.
+        with contextlib.suppress(asyncio.CancelledError):
+            await task
+    return {"started": True, "run_id": run_id, **progress.snapshot()}
 
 
 async def preview_scan(
@@ -155,9 +239,18 @@ async def preview_scan(
         settings_blob.setdefault("limit_per_ats", limit_companies)
         settings_blob["preview_limit"] = limit_companies
 
-    result = await run_source(
-        source, config, settings=settings_blob, session=session, collect_samples=True
-    )
+    # A preview is capped but still not instant, so it gets a bar too. `finally` is
+    # load-bearing: leaving the tracker active would strand the UI on a phantom run
+    # and stop the next real scan from claiming it.
+    progress.begin([(source_id, getattr(source, "label", source_id))])
+    progress.begin_stage(source_id)
+    try:
+        result = await run_source(
+            source, config, settings=settings_blob, session=session, collect_samples=True
+        )
+    finally:
+        progress.end_stage(source_id)
+        progress.end()
     return {
         "source_id": source_id,
         "counters": result.counters.as_dict(),
@@ -168,22 +261,20 @@ async def preview_scan(
 
 
 async def run_scheduled_scan() -> None:
-    """Entry point for the APScheduler job."""
-    from storage.db import get_session
+    """Entry point for the APScheduler job.
 
-    async with get_session() as session:
-        for summary in await scan_all(session):
-            if "error" in summary:
-                logger.warning("source %s errored: %s", summary["source_id"], summary["error"])
-                continue
-            logger.info(
-                "%s: %d found, %d added, %d refreshed, %d delisted",
-                summary["source_id"],
-                summary["counters"]["found"],
-                summary["added"],
-                summary["refreshed"],
-                summary["delisted"],
-            )
+    Deliberately the same path as a button press. A timed sweep that bypassed the
+    tracker would be invisible to the UI and could overlap a manual one, which is how
+    two sweeps came to share one set of counters.
+    """
+    result = await start_run(all_sources=True, wait=True)
+    if not result.get("started"):
+        logger.info("scheduled scan skipped: a scan is already running")
+        return
+    logger.info(
+        "scheduled scan %s: %s, %d kept, %d added",
+        result.get("run_id"), result.get("status"), result.get("kept", 0), result.get("added", 0),
+    )
 
 
 def available_sources() -> dict:

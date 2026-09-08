@@ -228,6 +228,8 @@ class ScanRun(Base):
     # stage -> [{title, count}] for the postings this run dropped.
     drops: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     unreachable_boards: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # Boards not requested at all this run because they are on the dead-board list.
+    boards_skipped_dead: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
 
 class BoardHealth(Base):
@@ -242,6 +244,35 @@ class BoardHealth(Base):
     # reachable | empty | slug_gone | network | auth | server | unknown
     status: Mapped[str] = mapped_column(String(32), nullable=False)
     detail: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+
+class DeadBoard(Base):
+    """A directory board that failed, keyed by the slug the URL is built from.
+
+    Distinct from `BoardHealth`, which appends one row per company per run and backs
+    the Health tab. A directory sweep touches ~28,700 boards, so history at that
+    volume would swamp both the table and the UI. This is current state only: one
+    upserted row per broken board, holding a consecutive-failure streak.
+
+    Measured before building: probing the same random sample twice, 20 seconds apart,
+    every one of 137 failures reproduced and none flapped. A board that 404s is a slug
+    that no longer exists in a community-maintained dataset nobody prunes, so the
+    streak is about tolerating transient network trouble, not genuine ambiguity.
+    """
+
+    __tablename__ = "dead_boards"
+
+    provider_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    slug: Mapped[str] = mapped_column(String(256), primary_key=True)
+    # Consecutive failures. Reset to zero (row deleted) the moment a board answers.
+    failures: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # slug_gone | network | auth | server | unknown
+    kind: Mapped[str] = mapped_column(String(32), nullable=False, default="unknown")
+    detail: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    first_failed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    # When the board was last actually requested. Drives the periodic re-check that
+    # lets a company which moves back onto an ATS get picked up again.
+    last_checked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
 class Resume(Base):
@@ -273,6 +304,8 @@ class Profile(Base):
     email: Mapped[str] = mapped_column(String(256), nullable=False, default="")
     phone: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     linkedin_url: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    github_url: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    website: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     location: Mapped[Optional[str]] = mapped_column(String(256), nullable=True)
     work_auth: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

@@ -153,7 +153,7 @@ function EduCard({
 
 const EMPTY_PROFILE: Omit<Profile, 'resume_id'> = {
   first_name: '', last_name: '', email: '', phone: null,
-  linkedin_url: null, location: null, work_auth: null,
+  linkedin_url: null, github_url: null, website: null, location: null, work_auth: null,
   experience: [], education: [],
 }
 
@@ -243,6 +243,8 @@ export default function ProfileEditor({ resumeId }: { resumeId: string }) {
       <Field label="Email" value={profile.email} onChange={(v) => setProfile((p) => ({ ...p, email: v }))} />
       <Field label="Phone" value={profile.phone ?? ''} onChange={set('phone')} />
       <Field label="LinkedIn URL" value={profile.linkedin_url ?? ''} onChange={set('linkedin_url')} />
+      <Field label="GitHub URL" value={profile.github_url ?? ''} onChange={set('github_url')} />
+      <Field label="Personal Website" value={profile.website ?? ''} onChange={set('website')} />
       <Field label="Location" value={profile.location ?? ''} onChange={set('location')} />
       <Field label="Work Authorization" value={profile.work_auth ?? ''} onChange={set('work_auth')} />
 

@@ -65,6 +65,11 @@ _MIGRATIONS = [
     # treated as already-applied.
     "ALTER TABLE pipeline_entries RENAME COLUMN updated_at TO last_interacted_at",
     "ALTER TABLE pipeline_entries ADD COLUMN contact_email VARCHAR(320)",
+    # The résumé header carries these and the autofill catalog already has fields
+    # for them; only the profile was dropping them on the floor.
+    "ALTER TABLE profiles ADD COLUMN github_url TEXT",
+    "ALTER TABLE profiles ADD COLUMN website TEXT",
+    "ALTER TABLE scan_runs ADD COLUMN boards_skipped_dead INTEGER",
 ]
 
 

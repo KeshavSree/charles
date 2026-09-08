@@ -11,6 +11,7 @@ import asyncio
 import logging
 from typing import Any, Optional
 
+from scanner import progress
 from scanner.errors import classify_fetch_error
 from scanner.registry import load_providers, resolve_provider
 from scanner.runner import SourceContext
@@ -61,6 +62,9 @@ async def scan_boards(
     semaphore = asyncio.Semaphore(max(1, int(limit)))
     result = sctx.result
     result.companies = len(pairs)
+    # The board count is this stage's denominator, and it is only knowable here --
+    # the directory has to resolve before anyone knows how many boards there are.
+    progress.set_total(len(pairs))
 
     async def worker(entry: PortalEntry, provider: Any) -> None:
         async with semaphore:
@@ -69,13 +73,20 @@ async def scan_boards(
             except Exception as exc:  # noqa: BLE001 — classified into a health status
                 kind = classify_fetch_error(exc)
                 result.errors.append({"company": entry.name, "error": str(exc), "kind": kind})
+                result.board_outcomes.append(
+                    (provider.id, entry.name, False, kind, str(exc)[:500])
+                )
                 if collect_health:
                     result.health.append(
                         {"company": entry.name, "status": kind, "detail": str(exc)[:500]}
                     )
                 result.unreachable_boards += 1
+                progress.advance()
+                progress.set_counts(result.counters.found, result.counters.kept)
                 return
 
+        result.board_outcomes.append((provider.id, entry.name, True, "reachable", ""))
+        progress.advance()
         if getattr(postings, "workday_no_date_skip", False):
             result.workday_no_date_skip += 1
         if collect_health:
@@ -86,5 +97,6 @@ async def scan_boards(
         for posting in postings:
             posting.provider_id = provider.id
             sctx.keep(posting)
+        progress.set_counts(result.counters.found, result.counters.kept)
 
     await asyncio.gather(*(worker(e, p) for e, p in pairs))

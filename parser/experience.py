@@ -16,13 +16,14 @@ _DATE_RANGE = re.compile(
     r"\.?\s+)?(?:20|19)\d{2})",
     re.IGNORECASE,
 )
-_PRESENT = re.compile(r"present|current|now", re.IGNORECASE)
+from .dates import is_present, to_month_year
 
 
 @dataclass
 class ExperienceEntry:
     company: str = ""
     title: str = ""
+    location: str = ""
     start_date: str = ""
     end_date: str = ""
     is_current: bool = False
@@ -30,19 +31,15 @@ class ExperienceEntry:
 
 
 def _parse_dates(date_str: str) -> tuple[str, str, bool]:
-    """Return (start_date, end_date, is_current) from a date range string."""
+    """Return (start_date, end_date, is_current) as `MM/YYYY`, matching the
+    layout parser -- both paths feed the same profile fields."""
     halves = re.split(r"\s*[–\-—]\s*", date_str, maxsplit=1)
-    start = halves[0].strip()
-    end = ""
-    is_current = False
-    if len(halves) > 1:
-        end_raw = halves[1].strip()
-        if _PRESENT.fullmatch(end_raw):
-            end = "Present"
-            is_current = True
-        else:
-            end = end_raw
-    return start, end, is_current
+    start = to_month_year(halves[0])
+    if len(halves) == 1:
+        return start, "", False
+    if is_present(halves[1]):
+        return start, "", True
+    return start, to_month_year(halves[1], end=True), False
 
 
 def extract_experience(section_text: str) -> list[ExperienceEntry]:

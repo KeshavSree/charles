@@ -49,6 +49,8 @@ class ProfileOut(BaseModel):
     email: str
     phone: str | None
     linkedin_url: str | None
+    github_url: str | None = None
+    website: str | None = None
     location: str | None
     work_auth: str | None
     experience: list[ExperienceOut]
@@ -82,6 +84,8 @@ class ProfileIn(BaseModel):
     email: str = ""
     phone: str | None = None
     linkedin_url: str | None = None
+    github_url: str | None = None
+    website: str | None = None
     location: str | None = None
     work_auth: str | None = None
     experience: list[ExperienceIn] = []
@@ -109,6 +113,8 @@ async def _load_profile_out(session: AsyncSession, resume_id: str) -> ProfileOut
         email=profile.email,
         phone=profile.phone,
         linkedin_url=profile.linkedin_url,
+        github_url=profile.github_url,
+        website=profile.website,
         location=profile.location,
         work_auth=profile.work_auth,
         experience=[ExperienceOut.model_validate(e) for e in exp_rows],
@@ -138,6 +144,8 @@ async def update_profile(
         profile.email = body.email
         profile.phone = body.phone
         profile.linkedin_url = body.linkedin_url
+        profile.github_url = body.github_url
+        profile.website = body.website
         profile.location = body.location
         profile.work_auth = body.work_auth
         profile.updated_at = now
@@ -152,6 +160,8 @@ async def update_profile(
             email=body.email,
             phone=body.phone,
             linkedin_url=body.linkedin_url,
+            github_url=body.github_url,
+            website=body.website,
             location=body.location,
             work_auth=body.work_auth,
             created_at=now,

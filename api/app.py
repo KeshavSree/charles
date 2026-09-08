@@ -7,7 +7,10 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from logging_config import configure_logging
-from storage.db import create_tables
+import logging
+
+from storage.db import create_tables, get_session
+from storage.repository import reap_orphaned_runs
 from api.routers import jobs, pipeline, resumes, scanner, profiles, info
 
 
@@ -15,6 +18,11 @@ from api.routers import jobs, pipeline, resumes, scanner, profiles, info
 async def lifespan(app: FastAPI):
     configure_logging()
     await create_tables()
+    # Any run still marked "running" belongs to a process that no longer exists.
+    async with get_session() as session:
+        orphaned = await reap_orphaned_runs(session)
+        if orphaned:
+            logging.getLogger(__name__).info("marked %d interrupted scan run(s)", orphaned)
     yield
 
 

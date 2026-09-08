@@ -1,39 +1,13 @@
 """Title filter. Ported from `scan.mjs:buildTitleFilter` + `compileKeyword`.
 
-The acronym rule is the subtle part: a 2-3 character all-letter keyword compiles to a
-word-boundary regex, so "COO" stops matching "Coordinator" and "SDR" stops matching
-mid-word. Longer keywords and anything containing non-letters (".NET", "L&D", "SAP ")
-keep permissive substring matching, which is both faster and what users expect.
+Keyword matching semantics -- including the acronym rule that stops "COO" from
+matching "Coordinator" -- live in `keywords.py`, shared with the location filter.
 """
 from __future__ import annotations
 
-import re
-from typing import Any, Callable, Optional
+from typing import Callable, Optional
 
-_ACRONYM_RE = re.compile(r"^[a-z]{2,3}$")
-
-
-def compile_keyword(keyword: str) -> Callable[[str], bool]:
-    if _ACRONYM_RE.match(keyword):
-        pattern = re.compile(rf"\b{re.escape(keyword)}\b")
-        return lambda lower: bool(pattern.search(lower))
-    return lambda lower: keyword in lower
-
-
-def _normalize(values: Any) -> list[str]:
-    """Tolerate a bare string, None, and non-string entries. A surviving empty string
-    would match every title via `in`, silently bypassing the filter, so it is dropped."""
-    if values is None:
-        return []
-    items = values if isinstance(values, (list, tuple)) else [values]
-    out = []
-    for item in items:
-        if not isinstance(item, str):
-            continue
-        cleaned = item.strip().lower()
-        if cleaned:
-            out.append(cleaned)
-    return out
+from scanner.filters.keywords import compile_keyword, normalize_keyword_list as _normalize
 
 
 def build_title_filter(config: Optional[dict]) -> Callable[[str], bool]:

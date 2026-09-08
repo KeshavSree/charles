@@ -77,6 +77,14 @@ Key modules:
   per-stage counters and has two profiles: `tracked` (full) and `reverse` (short chain
   with a mandatory freshness gate).
 - `scanner/runner.py` / `service.py` — orchestration and DB glue.
+- `scanner/progress.py` — the **authoritative state of the running scan**. A sweep is
+  started by `service.start_run()`, which puts it on a background task and returns at
+  once; the run outlives the request. Clients (both `/jobs` and `/scanner`) learn the
+  state only by polling `GET /api/scanner/progress`, never from what they remember
+  clicking, so a reload or a second tab shows the truth. Only one run at a time:
+  `progress.begin()` refuses a second, and the scheduler goes through the same path.
+  `POST /api/scanner/cancel` stops one. Runs left as `running` by a crash are reaped
+  to `interrupted` at startup.
 - `scanner/directory.py`, `scanner/seeds.py` — the reverse-discovery sources. Slugs come
   from untrusted datasets, so `SLUG_RE` + `entry_on_host()` gate every constructed URL.
 
@@ -85,6 +93,11 @@ Key modules:
 - **Ingest filters** (`ScanConfig` table, edited at `/scanner`) decide what is ever
   written. Destructive — use `POST /api/scanner/preview` to dry-run before saving.
 - **View filters** (`/api/jobs` query params) only narrow what is already stored.
+
+Directory sweeps skip boards on the `dead_boards` list — slugs from the public
+datasets whose boards no longer exist (measured: ~46% of them, and 100% reproducible
+across probes). A board joins after two consecutive failures, leaves the moment it
+answers, and is re-probed weekly so a company that returns is rediscovered.
 
 Job lifecycle: `first_seen_at` is immutable, `last_seen_at` refreshes each run, and
 postings that vanish from a board **that returned successfully** become `delisted`. A

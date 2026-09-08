@@ -181,8 +181,14 @@ def sample_companies(items: list, limit: Optional[int], shuffle: bool = False) -
     return copy[:limit]
 
 
-async def build_directory_entries(config: dict) -> tuple[list[tuple[PortalEntry, Any]], dict]:
-    """Resolve every configured ATS directory into (entry, provider) pairs."""
+async def build_directory_entries(
+    config: dict, skip: Optional[set[tuple[str, str]]] = None
+) -> tuple[list[tuple[PortalEntry, Any]], dict]:
+    """Resolve every configured ATS directory into (entry, provider) pairs.
+
+    `skip` holds (provider_id, slug) pairs known to be dead. Filtering here rather
+    than inside the fetch loop is the point: a skipped board costs no request at all.
+    """
     providers = load_providers()
     requested = config.get("ats_sources") or list(SOURCES.keys())
     limit = config.get("limit_per_ats")
@@ -191,6 +197,7 @@ async def build_directory_entries(config: dict) -> tuple[list[tuple[PortalEntry,
     pairs: list[tuple[PortalEntry, Any]] = []
     available = 0
     scanned = 0
+    skipped = 0
     cap_hit = False
     dataset_status: dict[str, str] = {}
 
@@ -214,12 +221,16 @@ async def build_directory_entries(config: dict) -> tuple[list[tuple[PortalEntry,
             entry = source["to_entry"](raw)
             if entry is None:
                 continue
+            if skip and (provider.id, entry.name) in skip:
+                skipped += 1
+                continue
             pairs.append((entry, provider))
             scanned += 1
 
     return pairs, {
         "available": available,
         "scanned": scanned,
+        "skipped_dead": skipped,
         "cap_hit": cap_hit,
         "dataset_status": dataset_status,
     }

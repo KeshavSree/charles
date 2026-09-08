@@ -86,16 +86,15 @@ async def upload_resume(
     ))
     await session.flush()
 
-    from parser.pdf import extract_text
-    from parser.sections import detect_sections
+    from parser.resume import parse_pdf
 
     # Parse + profile generation are one atomic unit with the upload: any failure
     # rolls the whole thing back and surfaces loudly rather than leaving a
     # half-parsed résumé behind.
     try:
-        raw_text = extract_text(str(file_path))
-        sections = detect_sections(raw_text)
-        for section_type, content in sections.items():
+        # Sections come from the layout parser so the stored text matches what
+        # profile generation reads back, and so custom headings survive.
+        for section_type, content in parse_pdf(str(file_path)).sections.items():
             session.add(ResumeSection(
                 resume_id=resume_id,
                 section_type=section_type,

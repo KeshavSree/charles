@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from typing import Callable, Optional
 
-from scanner.filters.location import normalize_keyword_list
+from scanner.filters.keywords import normalize_keyword_list
 
 
 def build_content_filter(config: Optional[dict]) -> Callable[[str, list[str]], bool]:

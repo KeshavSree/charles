@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from api.deps import get_db
 from scanner.registry import load_providers, resolve_provider
 from scanner.sources._registry import load_sources
-from scanner.service import preview_scan, scan_all, scan_one
+from scanner.service import preview_scan, scan_all, scan_one, start_run
 from scanner.types import PortalEntry
 from storage.models import BoardHealth, ScanRun, TrackedCompany
 from storage.repository import (
@@ -231,30 +231,39 @@ async def put_source(
 
 # ── Runs ────────────────────────────────────────────────────────────
 
-@router.post("/scanner/run")
-async def trigger_run(
-    payload: RunIn = RunIn(), session: AsyncSession = Depends(get_db)
-) -> dict[str, Any]:
-    overrides = {
-        "max_posting_age_days": payload.max_posting_age_days,
-        "include_undated": payload.include_undated,
-    }
-    if payload.all:
-        return {"runs": await scan_all(session, dry_run=payload.dry_run)}
-    if not payload.source_id:
-        raise HTTPException(status_code=400, detail="source_id or all is required")
-    if payload.source_id not in load_sources():
-        raise HTTPException(status_code=404, detail=f"unknown source: {payload.source_id}")
-    return {
-        "runs": [
-            await scan_one(
-                session,
-                payload.source_id,
-                dry_run=payload.dry_run,
-                overrides=overrides,
-            )
-        ]
-    }
+@router.post("/scanner/run", status_code=202)
+async def trigger_run(payload: RunIn = RunIn()) -> dict[str, Any]:
+    """Start a sweep and return at once with its id.
+
+    202, not 200: the work has been accepted, not finished. Holding the request open
+    for the forty minutes a sweep takes made the UI's notion of "running" a property
+    of one tab's fetch -- the dev proxy timed out at five minutes, the tab said
+    "Failed", and the sweep continued unseen. Clients read `/scanner/progress` for
+    state now, so every tab agrees and a reload sees the truth.
+    """
+    if not payload.all:
+        if not payload.source_id:
+            raise HTTPException(status_code=400, detail="source_id or all is required")
+        if payload.source_id not in load_sources():
+            raise HTTPException(status_code=404, detail=f"unknown source: {payload.source_id}")
+    return await start_run(
+        source_id=payload.source_id,
+        all_sources=bool(payload.all),
+        dry_run=payload.dry_run,
+        overrides={
+            "max_posting_age_days": payload.max_posting_age_days,
+            "include_undated": payload.include_undated,
+        },
+    )
+
+
+@router.post("/scanner/cancel")
+async def cancel_run() -> dict[str, Any]:
+    """Stop the running sweep. Idempotent: cancelling nothing is not an error."""
+    from scanner import progress
+
+    stopped = await progress.cancel()
+    return {"cancelled": stopped, **progress.snapshot()}
 
 
 @router.post("/scanner/preview")
@@ -298,6 +307,10 @@ class RunOut(BaseModel):
     companies_scanned: int
     cap_hit: bool
     unreachable_boards: int
+    # Boards never requested because they are on the dead-board list. Without this the
+    # drop in `companies_scanned` between runs would look like the sweep shrinking
+    # rather than the skip working.
+    boards_skipped_dead: int = 0
     drops: Optional[dict] = None
 
     model_config = {"from_attributes": True}
@@ -307,6 +320,18 @@ class RunOut(BaseModel):
 async def purge(session: AsyncSession = Depends(get_db)) -> dict[str, int]:
     """Drop every stored posting. Irreversible, so the UI gates it behind a confirm."""
     return {"deleted": await purge_jobs(session)}
+
+
+@router.get("/scanner/progress")
+async def get_progress() -> dict[str, Any]:
+    """Live state of the scan currently running, if any.
+
+    Deliberately takes no DB session: it is polled once a second for up to forty
+    minutes while a sweep holds a long transaction, and it must never queue behind it.
+    """
+    from scanner import progress
+
+    return progress.snapshot()
 
 
 @router.get("/scanner/runs", response_model=list[RunOut])

@@ -1,10 +1,11 @@
 # storage/repository.py
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import logging
 import os
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 _log = logging.getLogger(__name__)
@@ -13,7 +14,7 @@ from sqlalchemy import func, select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from storage.models import (
-    BoardHealth, Job, PipelineEntry, PIPELINE_OUTCOMES, PIPELINE_STAGES,
+    BoardHealth, DeadBoard, Job, PipelineEntry, PIPELINE_OUTCOMES, PIPELINE_STAGES,
     Profile, ProfileExperience, ProfileEducation,
     Resume, ResumeSection, ScanConfig, ScanRun, SourceConfig, TrackedCompany,
     UserInfo,
@@ -435,6 +436,28 @@ async def finish_scan_run(session: AsyncSession, run: ScanRun, values: dict) -> 
     return run
 
 
+async def reap_orphaned_runs(session: AsyncSession) -> int:
+    """Mark runs still labelled `running` at startup as interrupted.
+
+    A run only lives in the process that started it, so any row still saying "running"
+    when the process boots is by definition dead -- killed, crashed, or reloaded
+    mid-sweep. Left alone they accumulate as phantom in-progress entries in the Runs
+    tab, which is exactly the kind of UI-says-one-thing-reality-says-another this
+    whole change is meant to remove.
+    """
+    result = await session.execute(
+        select(ScanRun).where(ScanRun.status == "running", ScanRun.finished_at.is_(None))
+    )
+    rows = result.scalars().all()
+    now = datetime.now(tz=timezone.utc)
+    for row in rows:
+        row.status = "interrupted"
+        row.finished_at = now
+    if rows:
+        await session.commit()
+    return len(rows)
+
+
 async def record_board_health(session: AsyncSession, records: list[dict]) -> None:
     now = datetime.now(tz=timezone.utc)
     for record in records:
@@ -447,6 +470,86 @@ async def record_board_health(session: AsyncSession, records: list[dict]) -> Non
             )
         )
     await session.commit()
+
+
+# A board is skipped once it has failed this many consecutive sweeps. Two is enough:
+# failures were measured to be 100% reproducible, so the second run exists only to
+# absorb a transient network blip, not to build confidence in the verdict.
+DEAD_AFTER_FAILURES = 2
+
+# Even a permanently dead slug is re-probed this often, so a company that moves back
+# onto an ATS is picked up again. Spread over the sweep this costs a fraction of a
+# percent of the requests the skip saves.
+DEAD_RECHECK_DAYS = 7
+
+# Rows written per commit when folding a sweep's outcomes in. Small enough that the
+# event loop is never held for long, large enough that 28,700 outcomes don't become
+# 28,700 transactions.
+DEAD_BOARD_WRITE_CHUNK = 500
+
+
+async def dead_board_keys(session: AsyncSession) -> set[tuple[str, str]]:
+    """(provider_id, slug) pairs to skip this run.
+
+    A row is only skipped while it is both over the failure threshold *and* inside its
+    re-check window; letting it out of the window is what makes the skip self-healing
+    rather than a permanent ban.
+    """
+    cutoff = datetime.now(tz=timezone.utc) - timedelta(days=DEAD_RECHECK_DAYS)
+    rows = await session.execute(
+        select(DeadBoard.provider_id, DeadBoard.slug).where(
+            DeadBoard.failures >= DEAD_AFTER_FAILURES,
+            DeadBoard.last_checked_at >= cutoff,
+        )
+    )
+    return {(p, s) for p, s in rows.all()}
+
+
+async def record_board_outcomes(
+    session: AsyncSession, outcomes: list[tuple[str, str, bool, str, str]]
+) -> dict[str, int]:
+    """Fold one sweep's per-board results into the dead-board list.
+
+    Takes (provider_id, slug, ok, kind, detail). A success deletes the row outright, so
+    "not in the table" and "healthy" are the same state and the table only ever holds
+    boards that are currently broken.
+    """
+    if not outcomes:
+        return {"marked": 0, "revived": 0}
+    now = datetime.now(tz=timezone.utc)
+
+    existing = {
+        (row.provider_id, row.slug): row
+        for row in (await session.execute(select(DeadBoard))).scalars().all()
+    }
+    marked = revived = 0
+    # A directory sweep hands back ~28,700 outcomes, ~13,000 of them failures. Writing
+    # those in one commit stalls the event loop long enough for `/scanner/progress` to
+    # stop answering, which the UI correctly reads as having lost the server -- a
+    # self-inflicted desync at the very end of a successful run. Chunk it and yield.
+    for i, (provider_id, slug, ok, kind, detail) in enumerate(outcomes, start=1):
+        row = existing.get((provider_id, slug))
+        if ok:
+            if row is not None:
+                await session.delete(row)
+                revived += 1
+        else:
+            if row is None:
+                session.add(DeadBoard(
+                    provider_id=provider_id, slug=slug, failures=1, kind=kind,
+                    detail=(detail or "")[:500], first_failed_at=now, last_checked_at=now,
+                ))
+            else:
+                row.failures += 1
+                row.kind = kind
+                row.detail = (detail or "")[:500]
+                row.last_checked_at = now
+            marked += 1
+        if i % DEAD_BOARD_WRITE_CHUNK == 0:
+            await session.commit()
+            await asyncio.sleep(0)      # let pending progress polls through
+    await session.commit()
+    return {"marked": marked, "revived": revived}
 
 
 async def board_failure_streaks(session: AsyncSession) -> dict[str, int]:
@@ -491,6 +594,8 @@ async def save_profile(
         existing.email = profile.email
         existing.phone = profile.phone
         existing.linkedin_url = profile.linkedin_url
+        existing.github_url = profile.github_url
+        existing.website = profile.website
         existing.location = profile.location
         existing.work_auth = profile.work_auth
         existing.updated_at = profile.updated_at
@@ -505,9 +610,7 @@ async def save_profile(
 
 
 async def generate_profile_from_resume(session: AsyncSession, resume_id: str) -> Profile:
-    from parser.contact import extract_contact
-    from parser.experience import extract_experience
-    from parser.education import extract_education
+    from parser.resume import parse_pdf, parse_text
 
     sections_result = await session.execute(
         select(ResumeSection).where(ResumeSection.resume_id == resume_id)
@@ -517,19 +620,22 @@ async def generate_profile_from_resume(session: AsyncSession, resume_id: str) ->
     }
 
     resume = await session.get(Resume, resume_id)
-    full_text = sections.get("contact", "") + "\n" + "\n".join(
-        v for k, v in sections.items() if k != "contact"
-    )
     if resume and resume.file_path and os.path.exists(resume.file_path):
-        # Use the PDF as the source of truth when it's present. A present-but-corrupt
-        # file raises loudly (no silent fallback); a genuinely absent file falls back
-        # to the already-extracted section text (the programmatic/seeded path).
-        from parser.pdf import extract_text
-        full_text = extract_text(resume.file_path)
+        # Use the PDF as the source of truth when it's present, so the parser gets
+        # the column split and font tiers that the stored section text has already
+        # thrown away. A present-but-corrupt file raises loudly (no silent
+        # fallback); a genuinely absent file falls back to the flat-text parsers
+        # (the programmatic/seeded path).
+        parsed = parse_pdf(resume.file_path)
+    else:
+        full_text = sections.get("contact", "") + "\n" + "\n".join(
+            v for k, v in sections.items() if k != "contact"
+        )
+        parsed = parse_text(sections, full_text)
 
-    contact = extract_contact(full_text, sections.get("contact", ""))
-    exp_entries = extract_experience(sections.get("experience", ""))
-    edu_entries = extract_education(sections.get("education", ""))
+    contact = parsed.contact
+    exp_entries = parsed.experience
+    edu_entries = parsed.education
 
     now = datetime.now(tz=timezone.utc)
     existing = await session.get(Profile, resume_id)
@@ -539,6 +645,8 @@ async def generate_profile_from_resume(session: AsyncSession, resume_id: str) ->
         existing.email = contact.email
         existing.phone = contact.phone or None
         existing.linkedin_url = contact.linkedin_url or None
+        existing.github_url = contact.github_url or None
+        existing.website = contact.website or None
         existing.location = contact.location or None
         existing.updated_at = now
         profile = existing
@@ -550,6 +658,8 @@ async def generate_profile_from_resume(session: AsyncSession, resume_id: str) ->
             email=contact.email,
             phone=contact.phone or None,
             linkedin_url=contact.linkedin_url or None,
+            github_url=contact.github_url or None,
+            website=contact.website or None,
             location=contact.location or None,
             created_at=now,
             updated_at=now,
@@ -570,6 +680,7 @@ async def generate_profile_from_resume(session: AsyncSession, resume_id: str) ->
             profile_id=resume_id,
             company=e.company,
             title=e.title,
+            location=e.location or None,
             start_date=e.start_date or None,
             end_date=e.end_date or None,
             is_current=e.is_current,

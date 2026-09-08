@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from typing import Callable, Optional
 
-from scanner.filters.location import normalize_keyword_list
+from scanner.filters.keywords import normalize_keyword_list
 
 DEFAULT_VISA_POSITIVE = [
     "visa sponsorship", "sponsor a visa", "sponsor visas", "will sponsor",

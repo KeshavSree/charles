@@ -1,5 +1,5 @@
 'use client'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import FilterBar from '@/components/FilterBar'
 import JobsTable from '@/components/JobsTable'
@@ -13,6 +13,7 @@ import {
   JobFilters,
   runScan,
 } from '@/lib/api'
+import ScanProgressPanel, { useScanProgress } from '@/components/ScanProgress'
 
 const btnStyle: React.CSSProperties = {
   background: 'var(--surface)',
@@ -43,7 +44,10 @@ export default function JobsPage() {
   const [cursorStack, setCursorStack] = useState<(string | null)[]>([null])
   const [nextCursor, setNextCursor] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
-  const [scanStatus, setScanStatus] = useState<'idle' | 'running' | 'done' | 'error'>('idle')
+  // Scan state comes from the server, not from what this tab remembers clicking, so
+  // a reload (or a second tab, or a run started from /scanner) shows the truth.
+  const { progress: scanProgress, active: scanning, stale: scanStale, refresh: refreshScan } =
+    useScanProgress()
 
   useEffect(() => {
     fetchJobFilters().then(setFilters).catch(console.error)
@@ -126,19 +130,27 @@ export default function JobsPage() {
     }
   }
 
+  // Refresh the list when a run finishes, whoever started it. The old code reloaded
+  // in handleScan's happy path, which never fired once the scan outlived the request.
+  const wasScanning = useRef(false)
+  useEffect(() => {
+    if (wasScanning.current && !scanning) {
+      fetchJobFilters().then(setFilters).catch(console.error)
+      setCursorStack([null])
+      load()
+    }
+    wasScanning.current = scanning
+  }, [scanning, load])
+
   async function handleScan() {
-    setScanStatus('running')
     try {
       await runScan({ all: true })
-      setScanStatus('done')
-      await fetchJobFilters().then(setFilters).catch(console.error)
-      setCursorStack([null])
-      await load()
-      setTimeout(() => setScanStatus('idle'), 3000)
-    } catch {
-      setScanStatus('error')
-      setTimeout(() => setScanStatus('idle'), 3000)
+    } catch (e) {
+      console.error(e)
     }
+    // Only asks the server to start; the bar and button state both come from the
+    // poll, so there is nothing here that can disagree with what is really running.
+    refreshScan()
   }
 
   const pageNum = cursorStack.length
@@ -184,20 +196,23 @@ export default function JobsPage() {
           </Link>
           <button
             onClick={handleScan}
-            disabled={scanStatus === 'running'}
+            disabled={scanning}
             style={{
               ...btnStyle,
-              color: scanStatus === 'done' ? 'var(--gold)' : scanStatus === 'error' ? '#f87171' : 'var(--text)',
-              opacity: scanStatus === 'running' ? 0.6 : 1,
+              color: scanProgress?.status === 'failed' ? '#f87171' : 'var(--text)',
+              opacity: scanning ? 0.6 : 1,
             }}
           >
-            {scanStatus === 'idle' && '↻ Scan All'}
-            {scanStatus === 'running' && 'Scanning…'}
-            {scanStatus === 'done' && '✓ Done'}
-            {scanStatus === 'error' && '✗ Failed'}
+            {scanning ? 'Scanning…' : '↻ Scan All'}
           </button>
         </div>
       </div>
+
+      {scanProgress && scanProgress.status !== 'idle' && (
+        <div style={{ marginBottom: 12 }}>
+          <ScanProgressPanel progress={scanProgress} onCancelled={refreshScan} stale={scanStale} />
+        </div>
+      )}
 
       <FilterBar
         companies={filters.companies}

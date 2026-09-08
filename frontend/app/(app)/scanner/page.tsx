@@ -1,9 +1,10 @@
 'use client'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import TagInput from '@/components/TagInput'
 import SourcePanel from '@/components/SourcePanels'
+import ScanProgressPanel, { useScanProgress } from '@/components/ScanProgress'
 import {
-  BoardHealthRow, DropBreakdown, ScanConfig, ScanCounters, ScanRun, ScannerSource, SourceRun,
+  BoardHealthRow, DropBreakdown, ScanConfig, ScanCounters, ScanRun, ScannerSource,
   fetchBoardHealth, fetchRuns, fetchScanConfig, fetchSources, previewScan,
   purgeJobs, runScan, saveScanConfig, saveSource,
 } from '@/lib/api'
@@ -22,6 +23,7 @@ const th: React.CSSProperties = {
   borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap',
 }
 const td: React.CSSProperties = { padding: '5px 8px', borderBottom: '1px solid var(--border)' }
+
 const label: React.CSSProperties = { fontSize: 11, color: 'var(--text-muted)', display: 'block', marginBottom: 3 }
 
 const TABS = ['Filters', 'Sources', 'Runs', 'Health'] as const
@@ -119,12 +121,14 @@ export default function ScannerPage() {
   const [config, setConfig] = useState<ScanConfig | null>(null)
   const [sources, setSources] = useState<ScannerSource[]>([])
   const [expanded, setExpanded] = useState<string | null>(null)
-  const [lastRuns, setLastRuns] = useState<SourceRun[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [runs, setRuns] = useState<ScanRun[]>([])
   const [health, setHealth] = useState<{ boards: BoardHealthRow[]; failing: BoardHealthRow[] }>({ boards: [], failing: [] })
   const [preview, setPreview] = useState<Awaited<ReturnType<typeof previewScan>> | null>(null)
   const [busy, setBusy] = useState('')
+  // Server state, polled unconditionally: a run started in another tab, or before a
+  // reload, is just as visible as one started here.
+  const { progress, active: scanning, stale: scanStale, refresh: refreshScan } = useScanProgress()
   // Which location mode the UI shows. Derived from the saved config on load: a
   // non-empty `allow` list can only have come from allowlist mode, and an empty one
   // with any block terms can only have come from blocklist mode.
@@ -142,6 +146,7 @@ export default function ScannerPage() {
   }, [])
 
   useEffect(reload, [reload])
+
 
   useEffect(() => {
     if (!config) return
@@ -186,19 +191,36 @@ export default function ScannerPage() {
   }
 
   async function doRun(body: { source_id?: string; all?: boolean }) {
-    const key = body.all ? 'all' : body.source_id || ''
-    setBusy(key)
     setError(null)
     try {
-      const { runs } = await runScan(body)
-      setLastRuns(runs)
-      reload()
+      const ack = await runScan(body)
+      // The server refuses a second concurrent sweep rather than starting one; say so
+      // instead of pretending the click did something.
+      if (!ack.started && ack.reason === 'already_running') {
+        setError('A scan is already running — showing that one.')
+      }
     } catch (e) {
-      // Surfaced rather than logged. A failed scan used to look identical to an
-      // instant one: the button flickered and nothing changed.
-      setError(e instanceof Error ? e.message : 'Scan failed')
-    } finally { setBusy('') }
+      setError(e instanceof Error ? e.message : 'Could not start scan')
+    }
+    refreshScan()
   }
+
+  // Refresh runs/health when a sweep ends, whoever started it.
+  const wasScanning = useRef(false)
+  useEffect(() => {
+    if (wasScanning.current && !scanning) reload()
+    wasScanning.current = scanning
+  }, [scanning, reload])
+
+  // The funnel breakdown for the run that just finished. Derived from the persisted
+  // rows and the server's own start time, so it survives a reload and cannot describe
+  // a run this tab merely thinks happened.
+  const lastRuns: ScanRun[] | null = (() => {
+    const startedAt = progress?.started_at
+    if (!progress || progress.active || !startedAt || progress.status === 'idle') return null
+    const rows = runs.filter((r) => new Date(r.started_at).getTime() >= startedAt * 1000 - 2000)
+    return rows.length ? rows : null
+  })()
 
   async function toggleSource(id: string, enabled: boolean) {
     await saveSource(id, { enabled })
@@ -411,8 +433,8 @@ export default function ScannerPage() {
             <button style={btn} onClick={doSave} disabled={!!busy}>
               {busy === 'save' ? 'Saving…' : 'Save'}
             </button>
-            <button style={btn} onClick={() => doRun({ all: true })} disabled={!!busy}>
-              {busy === 'all' ? 'Scanning…' : 'Run all enabled sources'}
+            <button style={btn} onClick={() => doRun({ all: true })} disabled={!!busy || scanning}>
+              {scanning ? 'Scanning…' : 'Run all enabled sources'}
             </button>
 
             <div style={{ flex: 1 }} />
@@ -431,6 +453,12 @@ export default function ScannerPage() {
               {busy === 'purge' ? 'Purging…' : purgeArmed ? 'Click again to confirm' : 'Purge all jobs'}
             </button>
           </div>
+
+          {progress && progress.status !== 'idle' && (
+            <div style={{ marginTop: 12 }}>
+              <ScanProgressPanel progress={progress} onCancelled={refreshScan} stale={scanStale} />
+            </div>
+          )}
 
           {purged !== null && (
             <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 6 }}>
@@ -456,8 +484,8 @@ export default function ScannerPage() {
           </p>
 
           <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-            <button style={btn} onClick={() => doRun({ all: true })} disabled={!!busy}>
-              {busy === 'all' ? 'Scanning…' : 'Run all enabled'}
+            <button style={btn} onClick={() => doRun({ all: true })} disabled={!!busy || scanning}>
+              {scanning ? 'Scanning…' : 'Run all enabled'}
             </button>
           </div>
 
@@ -517,12 +545,14 @@ export default function ScannerPage() {
             <div style={{ marginTop: 12, border: '1px solid var(--border)', borderRadius: 4, padding: 10 }}>
               <strong style={{ fontSize: 12 }}>Last run</strong>
               {lastRuns.map((r) => (
-                <div key={r.source_id} style={{ marginTop: 6 }}>
+                <div key={r.id} style={{ marginTop: 6 }}>
                   <div style={{ fontSize: 12 }}>
-                    {r.label || r.source_id}
-                    {r.error && <span style={{ color: '#f87171' }}> — {r.error}</span>}
+                    {r.source_id}
+                    {r.status !== 'completed' && (
+                      <span style={{ color: '#f87171' }}> — {r.status}</span>
+                    )}
                   </div>
-                  {!r.error && <Funnel counters={r.counters} drops={r.drops} />}
+                  <Funnel counters={r} drops={r.drops} />
                 </div>
               ))}
             </div>
@@ -538,7 +568,18 @@ export default function ScannerPage() {
               <div style={{ fontSize: 12 }}>
                 <strong>{r.source_id}</strong>{r.dry_run ? ' (dry run)' : ''} ·{' '}
                 {new Date(r.started_at).toLocaleString()} ·{' '}
-                <span style={{ color: r.status === 'completed' ? 'var(--gold)' : '#f87171' }}>{r.status}</span>
+                {/* Cancelled and interrupted are outcomes, not failures — colouring
+                    them like errors misreports what happened. */}
+                <span style={{
+                  color: r.status === 'completed' ? 'var(--gold)'
+                    : r.status === 'failed' ? '#f87171'
+                      : 'var(--text-muted)',
+                }}>{r.status}</span>
+                {(r.boards_skipped_dead ?? 0) > 0 && (
+                  <span style={{ color: 'var(--text-muted)' }}>
+                    {' · '}{(r.boards_skipped_dead ?? 0).toLocaleString()} dead boards skipped
+                  </span>
+                )}
                 {r.cap_hit && <span style={{ color: '#fbbf24', marginLeft: 6 }}>capped {r.companies_scanned}/{r.companies_available}</span>}
               </div>
               <Funnel counters={r} drops={r.drops} />

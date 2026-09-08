@@ -5,7 +5,16 @@ from dataclasses import dataclass
 
 _EMAIL = re.compile(r"[\w.+-]+@[\w-]+\.[a-z]{2,}", re.IGNORECASE)
 _PHONE = re.compile(r"(?:\(\d{3}\)|\d{3})[\s.\-]\d{3}[\s.\-]\d{4}")
-_LINKEDIN = re.compile(r"(?:https?://)?(?:www\.)?linkedin\.com/in/[\w\-]+", re.IGNORECASE)
+_LINKEDIN = re.compile(r"(?:https?://)?(?:www\.)?linkedin\.com/in/[\w\-%.]+", re.IGNORECASE)
+_GITHUB = re.compile(r"(?:https?://)?(?:www\.)?github\.com/[\w\-.]+", re.IGNORECASE)
+# A personal site: any bare domain that isn't one of the profile hosts above.
+# The leading look-behind matters: without it the scan restarts mid-host and
+# "linkedin.com" sneaks through as "inkedin.com".
+_WEBSITE = re.compile(
+    r"(?<![\w.@/-])(?:https?://)?(?:www\.)?(?!linkedin\.|github\.)"
+    r"[\w-]+\.(?:com|io|dev|me|net|org|xyz|app|co)\b(?:/[\w\-./]*)?",
+    re.IGNORECASE,
+)
 _LOCATION = re.compile(r"[A-Z][a-z]+(?: [A-Z][a-z]+)?,\s+[A-Z]{2}\b")
 
 
@@ -16,6 +25,8 @@ class ContactInfo:
     email: str = ""
     phone: str = ""
     linkedin_url: str = ""
+    github_url: str = ""
+    website: str = ""
     location: str = ""
 
 
